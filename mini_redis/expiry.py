@@ -47,8 +47,24 @@ class ExpiryManager:
         3. time.time()で現在時刻を取得し、expiry_atと比較
         4. 期限切れの場合はself._store.delete(key)で削除してTrueを返す
         """
-        # TODO: Passive expiryのチェック処理を実装
-        raise NotImplementedError("check_and_remove_expired() is not implemented yet")
+        # 1. キーが存在しない場合はFalseを返す
+        if not self._store.exists(key):
+            return False
+
+        # 2. 有効期限が設定されていない場合はFalseを返す
+        expiry_at = self._store.get_expiry(key)
+        if expiry_at is None:
+            return False
+
+        # 3. 現在時刻と比較
+        current_time = time.time()
+        if current_time < expiry_at:
+            # まだ有効期限内
+            return False
+
+        # 4. 期限切れの場合は削除
+        self._store.delete(key)
+        return True
 
     async def start_active_expiry(self) -> None:
         """Active expiry: バックグラウンドタスクを開始.

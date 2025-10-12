@@ -53,8 +53,51 @@ class CommandHandler:
         2. コマンド名に応じてexecute_*メソッドを呼び出す
         3. 未知のコマンドの場合はCommandErrorをraise
         """
-        # TODO: コマンドのルーティング処理を実装
-        raise NotImplementedError("execute() is not implemented yet")
+        if not command:
+            raise CommandError("ERR empty command")
+
+        # 1. コマンド名を取得（大文字変換）
+        cmd_name = command[0].upper()
+        args = command[1:]
+
+        # 2. コマンド名に応じてルーティング
+        if cmd_name == "PING":
+            if len(args) != 0:
+                raise CommandError("ERR wrong number of arguments for 'ping' command")
+            return await self.execute_ping()
+
+        elif cmd_name == "GET":
+            if len(args) != 1:
+                raise CommandError("ERR wrong number of arguments for 'get' command")
+            return await self.execute_get(args[0])
+
+        elif cmd_name == "SET":
+            if len(args) != 2:
+                raise CommandError("ERR wrong number of arguments for 'set' command")
+            return await self.execute_set(args[0], args[1])
+
+        elif cmd_name == "INCR":
+            if len(args) != 1:
+                raise CommandError("ERR wrong number of arguments for 'incr' command")
+            return await self.execute_incr(args[0])
+
+        elif cmd_name == "EXPIRE":
+            if len(args) != 2:
+                raise CommandError("ERR wrong number of arguments for 'expire' command")
+            try:
+                seconds = int(args[1])
+            except ValueError as e:
+                raise CommandError("ERR value is not an integer or out of range") from e
+            return await self.execute_expire(args[0], seconds)
+
+        elif cmd_name == "TTL":
+            if len(args) != 1:
+                raise CommandError("ERR wrong number of arguments for 'ttl' command")
+            return await self.execute_ttl(args[0])
+
+        else:
+            # 3. 未知のコマンド
+            raise CommandError(f"ERR unknown command '{cmd_name}'")
 
     async def execute_ping(self) -> str:
         """PING: 常に'PONG'を返す.
@@ -65,8 +108,7 @@ class CommandHandler:
         実装のヒント:
         単純に "PONG" を返すだけ
         """
-        # TODO: PINGコマンドを実装
-        raise NotImplementedError("execute_ping() is not implemented yet")
+        return "PONG"
 
     async def execute_get(self, key: str) -> str | None:
         """GET: キーの値を取得.
@@ -82,8 +124,10 @@ class CommandHandler:
         2. self._store.get(key)でキーの値を取得
         3. 結果を返す
         """
-        # TODO: GETコマンドを実装（Passive expiry統合）
-        raise NotImplementedError("execute_get() is not implemented yet")
+        # 1. Passive expiryチェック
+        self._expiry.check_and_remove_expired(key)
+        # 2. キーの値を取得
+        return self._store.get(key)
 
     async def execute_set(self, key: str, value: str) -> str:
         """SET: キーに値を設定.
@@ -99,8 +143,8 @@ class CommandHandler:
         1. self._store.set(key, value)でキーに値を設定
         2. "OK"を返す
         """
-        # TODO: SETコマンドを実装
-        raise NotImplementedError("execute_set() is not implemented yet")
+        self._store.set(key, value)
+        return "OK"
 
     async def execute_incr(self, key: str) -> int:
         """INCR: キーの値を1増加.
@@ -122,8 +166,29 @@ class CommandHandler:
         5. 値を+1してself._store.set(key, new_value)で保存
         6. 新しい値を返す
         """
-        # TODO: INCRコマンドを実装（Passive expiry統合）
-        raise NotImplementedError("execute_incr() is not implemented yet")
+        # 1. Passive expiryチェック
+        self._expiry.check_and_remove_expired(key)
+
+        # 2. 現在の値を取得
+        current_value = self._store.get(key)
+
+        # 3. 値が存在しない場合は1を設定
+        if current_value is None:
+            self._store.set(key, "1")
+            return 1
+
+        # 4. 値が整数でない場合はエラー
+        try:
+            int_value = int(current_value)
+        except ValueError as e:
+            raise CommandError("ERR value is not an integer or out of range") from e
+
+        # 5. 値を+1して保存
+        new_value = int_value + 1
+        self._store.set(key, str(new_value))
+
+        # 6. 新しい値を返す
+        return new_value
 
     async def execute_expire(self, key: str, seconds: int) -> int:
         """EXPIRE: キーに有効期限を設定.
@@ -144,8 +209,17 @@ class CommandHandler:
            - expiry_at = time.time() + seconds
            - self._store.set_expiry(key, expiry_at)
         """
-        # TODO: EXPIREコマンドを実装（Passive expiry統合）
-        raise NotImplementedError("execute_expire() is not implemented yet")
+        # 1. Passive expiryチェック
+        self._expiry.check_and_remove_expired(key)
+
+        # 2. キーが存在するか確認
+        if not self._store.exists(key):
+            return 0
+
+        # 4. 有効期限を設定
+        expiry_at = time.time() + seconds
+        self._store.set_expiry(key, expiry_at)
+        return 1
 
     async def execute_ttl(self, key: str) -> int:
         """TTL: キーの残り有効秒数を取得.
@@ -166,8 +240,21 @@ class CommandHandler:
            - remaining = int(expiry_at - time.time())
            - return max(0, remaining)
         """
-        # TODO: TTLコマンドを実装（Passive expiry統合）
-        raise NotImplementedError("execute_ttl() is not implemented yet")
+        # 1. Passive expiryチェック
+        self._expiry.check_and_remove_expired(key)
+
+        # 2. キーが存在しない場合は-2を返す
+        if not self._store.exists(key):
+            return -2
+
+        # 3. 有効期限が設定されていない場合は-1を返す
+        expiry_at = self._store.get_expiry(key)
+        if expiry_at is None:
+            return -1
+
+        # 4. 残り秒数を計算して返す
+        remaining = int(expiry_at - time.time())
+        return max(0, remaining)
 
 
 class CommandError(Exception):
