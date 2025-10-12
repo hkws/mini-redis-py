@@ -50,8 +50,8 @@ class DataStore:
         実装のヒント:
         self._data辞書から取得。存在しない場合はNoneを返す
         """
-        # TODO: キーの値を取得する処理を実装
-        raise NotImplementedError("get() is not implemented yet")
+        entry = self._data.get(key)
+        return entry.value if entry else None
 
     def set(self, key: str, value: str) -> None:
         """キーに値を設定.
@@ -67,8 +67,7 @@ class DataStore:
         実装のヒント:
         StoreEntry(value)を作成してself._dataに保存
         """
-        # TODO: キーに値を設定する処理を実装
-        raise NotImplementedError("set() is not implemented yet")
+        self._data[key] = StoreEntry(value=value)
 
     def delete(self, key: str) -> bool:
         """キーを削除.
@@ -83,8 +82,11 @@ class DataStore:
         実装のヒント:
         dict.pop()を使用して削除。KeyErrorをキャッチしてFalseを返す
         """
-        # TODO: キーを削除する処理を実装
-        raise NotImplementedError("delete() is not implemented yet")
+        try:
+            self._data.pop(key)
+            return True
+        except KeyError:
+            return False
 
     def exists(self, key: str) -> bool:
         """キーが存在するかチェック.
@@ -98,8 +100,7 @@ class DataStore:
         実装のヒント:
         `key in self._data`でチェック
         """
-        # TODO: キーの存在確認処理を実装
-        raise NotImplementedError("exists() is not implemented yet")
+        return key in self._data
 
     def set_expiry(self, key: str, expiry_at: float) -> bool:
         """キーに有効期限を設定.
@@ -115,8 +116,11 @@ class DataStore:
         実装のヒント:
         キーが存在する場合、entry.expiry_atを更新
         """
-        # TODO: 有効期限を設定する処理を実装
-        raise NotImplementedError("set_expiry() is not implemented yet")
+        entry = self._data.get(key)
+        if entry is None:
+            return False
+        entry.expiry_at = expiry_at
+        return True
 
     def get_expiry(self, key: str) -> float | None:
         """キーの有効期限を取得.
@@ -130,8 +134,8 @@ class DataStore:
         実装のヒント:
         キーが存在する場合、entry.expiry_atを返す
         """
-        # TODO: 有効期限を取得する処理を実装
-        raise NotImplementedError("get_expiry() is not implemented yet")
+        entry = self._data.get(key)
+        return entry.expiry_at if entry else None
 
     def get_all_keys(self) -> list[str]:
         """すべてのキーを取得（Active expiry用）.
@@ -142,5 +146,4 @@ class DataStore:
         実装のヒント:
         list(self._data.keys())を返す
         """
-        # TODO: すべてのキーを取得する処理を実装
-        raise NotImplementedError("get_all_keys() is not implemented yet")
+        return list(self._data.keys())
