@@ -18,6 +18,64 @@ Kiro-style Spec Driven Development implementation using claude code slash comman
 - **mini-redis-py**: Pythonによる小さなRedisクローン実装（学習用）
 - Use `/kiro:spec-status [feature-name]` to check progress
 
+### Directory Structure
+```
+mini-redis-py/
+├── .claude/                    # Claude Code configuration
+│   ├── commands/              # Custom slash commands
+│   │   └── kiro/             # Kiro spec-driven development commands
+│   │       ├── spec-init.md
+│   │       ├── spec-requirements.md
+│   │       ├── spec-design.md
+│   │       ├── spec-tasks.md
+│   │       ├── spec-impl.md
+│   │       ├── spec-status.md
+│   │       ├── steering.md
+│   │       ├── steering-custom.md
+│   │       ├── validate-design.md
+│   │       └── validate-gap.md
+│   └── settings.local.json    # Local settings
+│
+├── .kiro/                     # Kiro specification files
+│   └── specs/                # Feature specifications
+│       └── mini-redis-py/    # Current project spec
+│           ├── spec.json     # Specification metadata
+│           ├── requirements.md
+│           ├── design.md
+│           └── tasks.md
+│
+├── mini_redis/               # Main package
+│   ├── __init__.py
+│   ├── __main__.py          # Entry point
+│   ├── protocol.py          # RESP protocol implementation
+│   ├── storage.py           # Data storage
+│   ├── commands.py          # Redis commands
+│   ├── expiry.py            # Key expiration
+│   └── server.py            # Server implementation
+│
+├── tests/                    # Test suite
+│   ├── __init__.py
+│   ├── test_imports.py
+│   ├── test_protocol.py
+│   ├── test_storage.py
+│   ├── test_commands.py
+│   ├── test_expiry.py
+│   └── test_server.py
+│
+├── solutions/                # Reference solutions
+│   ├── README.md
+│   └── mini_redis/
+│       └── (same structure as mini_redis/)
+│
+├── pyproject.toml           # Project configuration
+├── uv.lock                  # Lock file (uv)
+├── CLAUDE.md                # Project instructions (this file)
+├── README.md                # Project documentation
+├── WORKSHOP_GUIDE.md        # Workshop guide
+├── CfP.md                   # Call for Proposals
+└── memo.md                  # Development notes
+```
+
 ## Development Guidelines
 - Think in English, but generate responses in Japanese (思考は英語、回答の生成は日本語で行うように)
 
