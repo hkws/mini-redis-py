@@ -8,7 +8,7 @@ import logging
 import random
 import time
 
-from mini_redis.storage import DataStore
+from .storage import DataStore
 
 logger = logging.getLogger(__name__)
 

@@ -6,6 +6,8 @@
 
 学習者がワークショップで実装する目標となる、完全に動作するMini-Redisの実装です。
 
+このディレクトリのコードは相対インポート（`from .module`）を使用しているため、プロジェクトルートの学習用`mini_redis`とは**完全に独立**して動作します。ファイルの移動やコピーなしに、`python -m solutions.mini_redis`で直接実行できます。
+
 ## ファイル一覧
 
 ### 1. protocol.py
@@ -49,17 +51,21 @@ RESPプロトコルのパース・エンコード機能の完成版
 
 ### 完成版を実行
 
-完成版コードを使ってサーバを起動したい場合：
+完成版コードは**ファイルの移動やコピーなし**で直接実行できます。
+`solutions/mini_redis`内のコードは相対インポートを使用しているため、学習用の`mini_redis`とは完全に独立して動作します。
 
 ```bash
-# 1. 完成版をmini_redis/にコピー
-cp -f solutions/mini_redis/*.py mini_redis/
+# 完成版を直接起動（ファイルのコピー不要！）
+uv run python -m solutions.mini_redis
 
-# 2. サーバを起動
-python -m mini_redis
-
-# 3. 別のターミナルでredis-cliで接続
+# 別のターミナルでredis-cliで接続
 redis-cli -p 6379
+```
+
+**補足**: `python`コマンドが利用可能な環境では、以下のコマンドでも起動できます：
+
+```bash
+python -m solutions.mini_redis
 ```
 
 ### 実装と比較
@@ -87,6 +93,7 @@ code --diff mini_redis/protocol.py solutions/mini_redis/protocol.py
 - 完成版コードをそのままコピーするのではなく、まずは自分で実装することを推奨します
 - 詰まった箇所の参考として、該当するメソッドだけを参照することをお勧めします
 - 完成版コードにも学習用のコメントが含まれているため、理解を深めるのに役立ちます
+- **重要**: `solutions/mini_redis`は相対インポートを使用しているため、学習用の`mini_redis`とは完全に独立して動作します。ファイルの移動やコピーは不要です
 
 ## 実装のポイント
 

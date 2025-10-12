@@ -9,12 +9,12 @@ import logging
 from asyncio import StreamReader, StreamWriter
 from typing import TYPE_CHECKING
 
-from mini_redis.commands import CommandHandler
-from mini_redis.protocol import RESPParser
+from .commands import CommandHandler
+from .protocol import RESPParser
 
 if TYPE_CHECKING:
-    from mini_redis.expiry import ExpiryManager
-    from mini_redis.storage import DataStore
+    from .expiry import ExpiryManager
+    from .storage import DataStore
 
 logger = logging.getLogger(__name__)
 
@@ -61,8 +61,8 @@ class TCPServer:
         KeyboardInterruptや例外が発生するまで戻らない。
         """
         # 依存性の初期化（未指定の場合は新規作成）
-        from mini_redis.expiry import ExpiryManager
-        from mini_redis.storage import DataStore
+        from .expiry import ExpiryManager
+        from .storage import DataStore
 
         store = self._store if self._store is not None else DataStore()
         expiry = self._expiry if self._expiry is not None else ExpiryManager(store)
@@ -144,6 +144,9 @@ class ClientHandler:
 
         addr = writer.get_extra_info("peername")
         logger.info(f"Client connected: {addr}")
+
+        from .commands import CommandError
+        from .protocol import RESPProtocolError
 
         try:
             while True:

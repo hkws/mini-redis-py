@@ -8,11 +8,11 @@ import asyncio
 import logging
 import sys
 
-from mini_redis.commands import CommandHandler
-from mini_redis.expiry import ExpiryManager
-from mini_redis.protocol import RESPParser
-from mini_redis.server import ClientHandler, TCPServer
-from mini_redis.storage import DataStore
+from .commands import CommandHandler
+from .expiry import ExpiryManager
+from .protocol import RESPParser
+from .server import ClientHandler, TCPServer
+from .storage import DataStore
 
 
 def setup_logging() -> None:
@@ -45,6 +45,8 @@ async def main() -> None:
 
     # 初期化したコンポーネントをTCPServerに注入
     server = TCPServer(
+        host="127.0.0.1",
+        port=16379,
         store=store,
         expiry=expiry_manager,
         client_handler=client_handler,

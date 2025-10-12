@@ -6,8 +6,8 @@
 
 import time
 
-from mini_redis.expiry import ExpiryManager
-from mini_redis.storage import DataStore
+from .expiry import ExpiryManager
+from .storage import DataStore
 
 CommandResult = str | int | None
 

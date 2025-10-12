@@ -45,6 +45,8 @@ async def main() -> None:
 
     # 初期化したコンポーネントをTCPServerに注入
     server = TCPServer(
+        host="127.0.0.1",
+        port=6379,
         store=store,
         expiry=expiry_manager,
         client_handler=client_handler,
