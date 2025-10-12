@@ -1,6 +1,7 @@
 """Tests for TCPServer and ClientHandler."""
 
 import asyncio
+import contextlib
 
 import pytest
 
@@ -36,10 +37,8 @@ class TestTCPServer:
         # サーバを停止
         await server.stop()
         server_task.cancel()
-        try:
+        with contextlib.suppress(asyncio.CancelledError):
             await server_task
-        except asyncio.CancelledError:
-            pass
 
     @pytest.mark.asyncio
     async def test_server_accepts_multiple_connections(self) -> None:
@@ -64,10 +63,8 @@ class TestTCPServer:
         # サーバを停止
         await server.stop()
         server_task.cancel()
-        try:
+        with contextlib.suppress(asyncio.CancelledError):
             await server_task
-        except asyncio.CancelledError:
-            pass
 
 
 class TestClientHandler:
@@ -97,11 +94,9 @@ class TestClientHandler:
         # ハンドラを実行（接続が閉じられるまで）
         # 注: この実装はwriter.write()が呼ばれたデータをキャプチャする必要がある
         # 今はシンプルに実行して例外が起きないことを確認
-        try:
+        # EOFが発生するのは正常
+        with contextlib.suppress(Exception):
             await client_handler.handle(reader, writer)
-        except Exception:
-            # EOFが発生するのは正常
-            pass
 
     @pytest.mark.asyncio
     async def test_handle_multiple_commands(self) -> None:
@@ -122,10 +117,8 @@ class TestClientHandler:
         reader.feed_data(commands)
         reader.feed_eof()
 
-        try:
+        with contextlib.suppress(Exception):
             await client_handler.handle(reader, writer)
-        except Exception:
-            pass
 
 
 @pytest.mark.integration
@@ -159,7 +152,5 @@ class TestIntegration:
         # サーバを停止
         await server.stop()
         server_task.cancel()
-        try:
+        with contextlib.suppress(asyncio.CancelledError):
             await server_task
-        except asyncio.CancelledError:
-            pass
