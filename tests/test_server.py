@@ -2,6 +2,7 @@
 
 import asyncio
 import contextlib
+import time
 
 import pytest
 
@@ -59,6 +60,34 @@ class TestTCPServer:
         for _, writer in connections:
             writer.close()
             await writer.wait_closed()
+
+        # サーバを停止
+        await server.stop()
+        server_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await server_task
+
+    @pytest.mark.asyncio
+    async def test_server_starts_active_expiry(self) -> None:
+        """サーバ起動時にActive Expiryバックグラウンドタスクが開始される."""
+        # カスタムストアとエクスパイアマネージャを作成
+        store = DataStore()
+        expiry = ExpiryManager(store)
+
+        # 期限切れキーを設定
+        store.set("expired_key", "value")
+        store.set_expiry("expired_key", time.time() - 1)  # 既に期限切れ
+
+        # サーバを起動（ストアとエクスパイアマネージャを注入）
+        server = TCPServer(host="127.0.0.1", port=16382, store=store, expiry=expiry)
+        server_task = asyncio.create_task(server.start())
+        await asyncio.sleep(0.1)
+
+        # 1.5秒待つ（Active Expiryが少なくとも1回実行される）
+        await asyncio.sleep(1.5)
+
+        # 期限切れキーが削除されていることを確認
+        assert store.exists("expired_key") is False
 
         # サーバを停止
         await server.stop()

@@ -37,27 +37,31 @@ async def main() -> None:
     logger = logging.getLogger(__name__)
 
     # コンポーネントの初期化
-    # TODO: 各コンポーネントのインスタンスを作成
     store = DataStore()
     expiry_manager = ExpiryManager(store)
     command_handler = CommandHandler(store, expiry_manager)
     parser = RESPParser()
     client_handler = ClientHandler(parser, command_handler)
-    server = TCPServer()
+
+    # 初期化したコンポーネントをTCPServerに注入
+    server = TCPServer(
+        store=store,
+        expiry=expiry_manager,
+        client_handler=client_handler,
+    )
 
     logger.info("Starting Mini-Redis server...")
 
     try:
-        # TODO: サーバとActive Expiryを起動
-        # ヒント: asyncio.TaskGroup()を使用して複数のタスクを管理
-        raise NotImplementedError("Server startup is not implemented yet")
+        # サーバを起動（内部でActive Expiryも起動される）
+        await server.start()
     except KeyboardInterrupt:
         logger.info("Received shutdown signal")
     except Exception as e:
         logger.error(f"Server error: {e}", exc_info=True)
     finally:
         logger.info("Shutting down Mini-Redis server...")
-        # TODO: サーバのクリーンアップ処理
+        await server.stop()
 
 
 if __name__ == "__main__":

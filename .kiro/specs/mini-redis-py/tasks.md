@@ -109,21 +109,21 @@
   - 複数クライアントのリクエストを並行処理する機能の実装
   - _Requirements: 1.5_
 
-- [ ] 6. 有効期限管理機能の実装
-- [ ] 6.1 Passive Expiryの実装
+- [x] 6. 有効期限管理機能の実装
+- [x] 6.1 Passive Expiryの実装
   - キーアクセス時に有効期限をチェックする機能の実装
   - 期限切れの場合にキーを削除する機能の実装
   - ExpiryManagerクラスでcheck_and_remove_expiredメソッドの実装
   - _Requirements: 5.2_
 
-- [ ] 6.2 Active Expiryバックグラウンドタスクの実装
+- [x] 6.2 Active Expiryバックグラウンドタスクの実装
   - 1秒ごとに実行されるバックグラウンドタスクの実装
   - ランダムに最大20キーをサンプリングする機能の実装
   - 期限切れキーを検出して削除する機能の実装
   - 削除率が25%を超える場合に即座に再実行するループロジックの実装
   - _Requirements: 5.3_
 
-- [ ] 6.3 コマンド層へのPassive Expiry統合
+- [x] 6.3 コマンド層へのPassive Expiry統合
   - GETコマンド実行前にcheck_and_remove_expiredを呼び出す処理の追加
   - INCRコマンド実行前にcheck_and_remove_expiredを呼び出す処理の追加
   - EXPIREコマンド実行前にcheck_and_remove_expiredを呼び出す処理の追加
