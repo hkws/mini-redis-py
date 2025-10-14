@@ -5,6 +5,10 @@
 このワークショップでは、Python/asyncioを使用してRedisの基本機能を実装します。
 60〜90分で、RESPプロトコル、asyncio、キー・バリューストア、有効期限管理を学びます。
 
+**📚 学習資料**:
+- [アーキテクチャ解説](docs/architecture.md) - システム全体像とレイヤー構造
+- [講義資料一覧](docs/lectures/) - 各段階の理論解説
+
 ## 学習目標
 
 1. **asyncioによるTCPサーバの実装**: 非同期I/Oの基礎を理解
@@ -30,8 +34,13 @@ pytest
 
 ## プロジェクト構成
 
+詳細なアーキテクチャは [`docs/architecture.md`](docs/architecture.md) を参照してください。
+
 ```
 mini-redis-py/
+├── docs/                # 学習資料
+│   ├── architecture.md  # アーキテクチャ解説
+│   └── lectures/        # 段階別講義資料
 ├── mini_redis/          # 学習者向け実装雛形（TODOコメント付き）
 │   ├── protocol.py      # RESPプロトコル - 実装が必要
 │   ├── storage.py       # データストレージ - 実装が必要
@@ -48,7 +57,74 @@ mini-redis-py/
 
 ## 実装の流れ
 
-### ステップ1: RESPプロトコルの理解と実装 (20分)
+### ステップ0: 導入とデモ確認 (5分)
+
+**📚 事前学習**: [Redis基礎とRESP入門（講義資料00）](docs/lectures/00-introduction.md)
+
+**目標**: Redisの基本概念とMini-Redisの完成イメージを理解
+
+1. 完成版のデモを確認する
+```bash
+# 完成版サーバを起動（別ターミナルで）
+python -m solutions.mini_redis
+
+# redis-cliで接続
+redis-cli -p 6379
+
+# 基本コマンドを試す
+> PING
+PONG
+
+> SET mykey "hello"
+OK
+
+> GET mykey
+"hello"
+
+> INCR counter
+(integer) 1
+
+> EXPIRE counter 60
+(integer) 1
+
+> TTL counter
+(integer) 59
+```
+
+2. RESPプロトコルの基本構造を確認
+   - Arrays形式: `*2\r\n$4\r\nPING\r\n`
+   - Bulk Strings: `$5\r\nhello\r\n`
+   - Simple Strings: `+OK\r\n`
+
+**ポイント**: 実装する機能のイメージを掴むことが重要です。講義資料でRedisとRESPの基礎を理解してから実装に進みましょう。
+
+---
+
+### ステップ1: TCPサーバの実装 (15分)
+
+**📚 事前学習**: [asyncio TCPサーバ（講義資料01）](docs/lectures/01-tcp-server.md)
+
+**目標**: asyncioを使ったTCPサーバとクライアント処理ループを実装
+
+1. `mini_redis/server.py` を開く
+2. `ClientHandler.handle()` を実装
+   - コマンドの読み取り→パース→実行→応答のループ
+   - 結果の型判定（str/int/None）とエンコード
+   - エラーハンドリング（CommandError、RESPProtocolError等）
+   - finally句でクリーンアップ
+
+**重要**: TCPServer.start()とstop()は実装済みです。ClientHandler.handle()のみ実装してください。
+
+**確認方法**:
+```bash
+pytest tests/test_server.py -v
+```
+
+---
+
+### ステップ2: RESPプロトコルの実装 (15分)
+
+**📚 事前学習**: [RESPプロトコル詳細（講義資料02）](docs/lectures/02-protocol-parsing.md)
 
 **目標**: RESPプロトコルのパース・エンコード機能を実装
 
@@ -68,7 +144,9 @@ mini-redis-py/
 pytest tests/test_protocol.py -v
 ```
 
-### ステップ2: データストレージ層の実装 (15分)
+---
+
+### ステップ3: データストレージ層の実装 (15分)
 
 **目標**: インメモリキー・バリューストアを実装
 
@@ -88,7 +166,11 @@ pytest tests/test_protocol.py -v
 pytest tests/test_storage.py -v
 ```
 
-### ステップ3: コマンド実行層の実装 (20分)
+---
+
+### ステップ4: コマンド実行層の実装 (20分)
+
+**📚 事前学習**: [コマンド実装パターン（講義資料03）](docs/lectures/03-commands.md)
 
 **目標**: Redisコマンドのルーティングと実行を実装
 
@@ -111,7 +193,11 @@ pytest tests/test_storage.py -v
 pytest tests/test_commands.py -v
 ```
 
-### ステップ4: 有効期限管理の実装 (15分)
+---
+
+### ステップ5: 有効期限管理の実装 (20分)
+
+**📚 事前学習**: [有効期限管理（講義資料04）](docs/lectures/04-expiry.md)
 
 **目標**: Passive + Active Expiryを実装
 
@@ -130,27 +216,13 @@ pytest tests/test_commands.py -v
 pytest tests/test_expiry.py -v
 ```
 
-### ステップ5: ネットワーク層の実装 (15分)
-
-**目標**: クライアント接続処理を実装
-
-1. `mini_redis/server.py` を開く
-2. `ClientHandler.handle()` を実装
-   - コマンドの読み取り→パース→実行→応答のループ
-   - 結果の型判定（str/int/None）とエンコード
-   - エラーハンドリング（CommandError、RESPProtocolError等）
-   - finally句でクリーンアップ
-
-**重要**: TCPServer.start()とstop()は実装済みです。ClientHandler.handle()のみ実装してください。
-
-**確認方法**:
-```bash
-pytest tests/test_server.py -v
-```
+---
 
 ### ステップ6: 統合テストと動作確認 (10分)
 
-**目標**: redis-cliで実際に動作確認
+**📚 振り返り**: [まとめと発展課題（講義資料05）](docs/lectures/05-summary.md)
+
+**目標**: 実装した機能の動作確認と学習内容の振り返り
 
 1. サーバを起動
 ```bash
@@ -180,6 +252,14 @@ OK
 > TTL mykey
 (integer) 9
 ```
+
+3. 学習内容の振り返り
+   - ✅ asyncioを使ったTCPサーバの実装パターン
+   - ✅ RESPプロトコルの仕様とパーサの実装
+   - ✅ 基本的なRedisコマンドの動作原理
+   - ✅ Redisの期限管理メカニズム (Passive + Active Expiration)
+
+**ポイント**: 講義資料05で、習得したスキルと次のステップ（発展課題）を確認しましょう。
 
 ## よくある間違いと対処法
 
@@ -324,6 +404,8 @@ code --diff mini_redis/protocol.py solutions/mini_redis/protocol.py
 
 ## 発展課題
 
+**📚 詳細**: [まとめと発展課題（講義資料05）](docs/lectures/05-summary.md)、[アーキテクチャ解説](docs/architecture.md)
+
 時間が余った場合は、以下の機能を追加してみましょう：
 
 ### 1. DELコマンドの実装
@@ -393,6 +475,17 @@ class Metrics:
 
 ## 参考資料
 
+### 本プロジェクトの学習資料
+- [アーキテクチャ解説](docs/architecture.md) - システム全体像、レイヤー構造、設計原則
+- [段階別講義資料](docs/lectures/) - 各ステップの理論解説
+  - [00-introduction.md](docs/lectures/00-introduction.md) - Redis基礎とRESP入門
+  - [01-tcp-server.md](docs/lectures/01-tcp-server.md) - asyncio TCPサーバ
+  - [02-protocol-parsing.md](docs/lectures/02-protocol-parsing.md) - RESPプロトコル詳細
+  - [03-commands.md](docs/lectures/03-commands.md) - コマンド実装パターン
+  - [04-expiry.md](docs/lectures/04-expiry.md) - 有効期限管理
+  - [05-summary.md](docs/lectures/05-summary.md) - まとめと発展課題
+
+### 外部資料
 - [Redis Protocol specification](https://redis.io/docs/reference/protocol-spec/)
 - [Python asyncio documentation](https://docs.python.org/3/library/asyncio.html)
 - [Real Python: Async IO in Python](https://realpython.com/async-io-python/)
@@ -434,11 +527,8 @@ pytest tests/test_protocol.py::TestRESPParser::test_encode_simple_string -v
 どうしても解決できない場合、完成版コードで動作確認できます：
 
 ```bash
-# 完成版をmini_redis/にコピー
-cp -f solutions/mini_redis/*.py mini_redis/
-
 # サーバを起動
-python -m mini_redis
+python -m solutions.mini_redis
 
 # 別のターミナルでredis-cliで接続
 redis-cli -p 6379
@@ -448,18 +538,31 @@ redis-cli -p 6379
 
 ## まとめ
 
+**📚 詳細**: [まとめと発展課題（講義資料05）](docs/lectures/05-summary.md)
+
 このワークショップでは、以下を学びました：
 
-1. ✅ asyncioを使ったTCPサーバの実装パターン
-2. ✅ RESPプロトコルの仕様とパーサの実装
-3. ✅ 基本的なRedisコマンドの動作原理
-4. ✅ Redisの期限管理メカニズム (Passive + Active Expiration)
+1. ✅ **asyncioを使ったTCPサーバの実装パターン**: StreamReader/StreamWriterによる非同期I/O、接続管理
+2. ✅ **RESPプロトコルの仕様とパーサの実装**: Arrays/Bulk Stringsのパース、エンコード関数
+3. ✅ **基本的なRedisコマンドの動作原理**: PING/GET/SET/INCR/EXPIRE/TTLの実装
+4. ✅ **Redisの期限管理メカニズム**: Passive + Active Expirationの2段階管理
 
-次のステップとして、以下を学ぶことをお勧めします：
+### 習得したスキル
 
+- asyncio/awaitによる非同期プログラミング
+- バイナリプロトコルの実装
+- レイヤー分離設計（Network → Protocol → Command → Storage）
+- テストドリブン開発
+
+### 次のステップ
+
+詳細な発展課題は[講義資料05](docs/lectures/05-summary.md)と[アーキテクチャ解説](docs/architecture.md)を参照してください。
+
+- **基本コマンド拡張**: DEL/EXISTS/EXPIRETIME
 - **データ永続化**: RDB/AOFの実装
 - **トランザクション**: MULTI/EXEC/WATCHの実装
 - **Pub/Sub**: PUBLISH/SUBSCRIBEの実装
 - **複雑なデータ構造**: List/Hash/Set/Sorted Setの実装
+- **メトリクス収集**: コマンド統計、接続数追跡
 
 お疲れ様でした！
