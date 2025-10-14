@@ -16,6 +16,7 @@ Kiro-style Spec Driven Development implementation using claude code slash comman
 
 ### Active Specifications
 - **mini-redis-py**: Pythonによる小さなRedisクローン実装（学習用）
+- **learning-materials**: 学習者向け講義資料の追加
 - Use `/kiro:spec-status [feature-name]` to check progress
 
 ### Directory Structure
