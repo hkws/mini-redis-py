@@ -37,6 +37,10 @@ mini-redis-py/
 │   └── settings.local.json    # Local settings
 │
 ├── .kiro/                     # Kiro specification files
+│   ├── steering/             # Steering documents
+│   │   ├── product.md        # Product overview and objectives
+│   │   ├── tech.md           # Technology stack and tools
+│   │   └── structure.md      # Project structure and patterns
 │   └── specs/                # Feature specifications
 │       └── mini-redis-py/    # Current project spec
 │           ├── spec.json     # Specification metadata
