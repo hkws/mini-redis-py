@@ -2,30 +2,22 @@
 
 ## 学習目標
 
-このセクションでは、以下の内容を学びます：
+このセクションでは、asyncioの基本概念（イベントループ、コルーチン、async/await）について学び、asyncioを使ったTCPサーバの構築方法を習得します。StreamReader/StreamWriterを使ったデータの送受信、接続管理とクリーンアップのベストプラクティス、そしてエラーハンドリングとgraceful shutdownの実装についても学びます。
 
-- asyncioの基本概念（イベントループ、コルーチン、async/await）
-- asyncioを使ったTCPサーバの構築方法
-- StreamReader/StreamWriterを使ったデータの送受信
-- 接続管理とクリーンアップのベストプラクティス
-- エラーハンドリングとgraceful shutdownの実装
-
-**所要時間**: 約15分（理論5分＋実装10分）
+所要時間: 約15分（理論5分＋実装10分）
 
 ## 前提知識
 
-- Pythonの基本文法
-- 関数と例外処理の理解
-- 同期処理の概念（通常のPythonコード）
+Pythonの基本文法、関数と例外処理の理解、そして同期処理の概念（通常のPythonコード）を理解していることを前提としています。
 
 ## asyncioの基礎
 
 ### 同期処理 vs 非同期処理
 
-**同期処理**（通常のPythonコード）:
+同期処理（通常のPythonコード）では、Sequentialに処理が実行されます。各処理が完了するまで次に進みません。
 
 ```python
-# ❌ 同期処理: 各処理が完了するまで次に進まない
+# 同期処理
 def fetch_user(user_id):
     time.sleep(1)  # データベース読み取り（1秒）
     return f"User {user_id}"
@@ -35,7 +27,7 @@ result2 = fetch_user(2)  # さらに1秒待つ
 # 合計2秒かかる
 ```
 
-**非同期処理**（asyncio）:
+非同期処理（asyncio）では、待ち時間中に他の処理を実行できます：
 
 ```python
 # ✅ 非同期処理: 待ち時間中に他の処理を実行
@@ -51,23 +43,16 @@ results = await asyncio.gather(
 # 合計1秒で完了（並行実行）
 ```
 
+この例では「待ち時間」を asyncio.sleep を表現していますが、ネットワークを介したリクエストやファイルの読み取りなどの処理に相当するでしょう。これらのようなI/Oバウンド（特定の処理の完了に要する時間が、主に入出力操作の完了待ちにより決まる）な処理には、待ち時間を有効に使える非同期処理が適しています。
+
 ### asyncioの3つの主要概念
 
 #### 1. イベントループ
 
-**イベントループ**は、非同期タスクを管理・実行するコアエンジンです。
+イベントループは、非同期処理を管理・実行する、asyncioにおいて中心的な役割を担う存在です。非同期に実行すべきジョブをキューに持っています。キューから順にジョブを取り出し、関数のように制御を渡し、そのジョブがI/O待ち等で一時停止したり完了したりすると、イベントループに制御が戻ります。
 
-```python
-import asyncio
 
-async def main():
-    print("Hello, asyncio!")
-
-# イベントループを起動してmain()を実行
-asyncio.run(main())
-```
-
-**イベントループの動作**:
+イベントループの動作:
 
 ```mermaid
 graph TB
@@ -87,56 +72,79 @@ graph TB
 
 #### 2. コルーチン
 
-**コルーチン**は、`async def`で定義される、途中で実行を中断・再開できる関数です。
+Python公式の用語集では、コルーチンを以下のように説明しています。
+
+> (コルーチン) コルーチンはサブルーチンのより一般的な形式です。 サブルーチンには決められた地点から入り、別の決められた地点から出ます。 コルーチンには多くの様々な地点から入る、出る、再開することができます。 コルーチンは async def 文で実装できます。 PEP 492 を参照してください。
+
+ここで言及されている、 `コルーチンには多くの様々な地点から入る、出る、再開することができ` るという性質を活用しながら、イベントループが実行を管理することで非同期処理が実現されます。
+
+実装においては、`async def` 文で定義される関数であるコルーチン関数を呼び出すと得られる、コルーチンオブジェクトをイベントループに登録することで非同期に処理を行います。言い換えると、**コルーチン関数（async def ...）を呼び出しただけでは、コルーチンは開始されません。**
 
 ```python
+import types
 async def hello():
     print("Hello")
     await asyncio.sleep(1)  # ここで一時中断
     print("World")
 
-# コルーチンを実行
-asyncio.run(hello())
+coro = hello() # 何もprintされない
+isinstance(coro, types.CoroutineType) # -> True
 ```
 
-**重要**: コルーチンは`await`で呼び出す必要があります。
+コルーチンは、[asyncio.run()](https://docs.python.org/ja/3.13/library/asyncio-runner.html#asyncio.run)のようなコルーチンを実行する関数を使うか、`await`により実行されます。
 
 ```python
-# ❌ 間違い: コルーチンを直接呼ぶ
-result = hello()  # <coroutine object>が返る（実行されない）
+import asyncio
+# <coroutine object>が返る（実行されない）
+result = hello()
 
-# ✅ 正しい: awaitで呼ぶ
+# 実際に実行される
 async def main():
-    result = await hello()  # 実際に実行される
+    result = await hello()
+
+if __name__ == "__main__":
+    asyncio.run(main())
+    print("done!")
 ```
 
-#### 3. async/await構文
+!!! note
+    `asyncio.create_task()`も`asyncio.run()`や`await`と同様にコルーチンの実行をスケジュールしますが、`asyncio.create_task()`はイベントループに制御を移すことに注意してください。
+    この性質により、直感と合わない実行順序となる可能性があります。
+    ```python
+    import asyncio
 
-**async**: コルーチンを定義する
+    async def coro_a():
+        print("I am coro_a(). Hi!")
+        await asyncio.sleep(1)
+        print("complete coro_a")
 
-```python
-async def my_coroutine():
-    return "result"
-```
+    async def coro_b():
+        print("I am coro_b().")
+        await asyncio.sleep(1)
+        print("complete coro_b")
 
-**await**: コルーチンの完了を待つ（その間、他のタスクが実行可能）
+    async def main():
+        task_b = asyncio.create_task(coro_b())
+        await coro_a()
 
-```python
-async def main():
-    result = await my_coroutine()  # 完了を待つ
-    print(result)
-```
+    asyncio.run(main())
+    # I am coro_a(). Hi!
+    # I am coro_b(). <- coro_bを先にスケジュールしているが、coro_aが先に実行されている
+    # complete coro_a
+    # complete coro_b
+    ```
 
-**await可能な主なもの**:
-- コルーチン: `await other_coroutine()`
-- asyncioタスク: `await asyncio.create_task(coro())`
-- asyncio関数: `await asyncio.sleep(1)`
+
+!!! info
+    Python内部でasyncioがどのように実装されているのか気になった方は、以下の発表を確認することをお勧めします。
+    
+    実装で知るasyncio -イベントループの正体とは- (PyCon JP 2021)
+    https://2021.pycon.jp/time-table?id=272959
+
 
 ## asyncioによるTCPサーバの構築
 
-### TCPサーバの基本パターン
-
-asyncioでTCPサーバを構築する基本的な手順：
+asyncioでは、[start_server](https://docs.python.org/ja/3.12/library/asyncio-stream.html#asyncio.start_server)というトップレベルの関数により、簡単にサーバーを作成することができます。
 
 ```python
 import asyncio
@@ -162,42 +170,19 @@ async def main():
 asyncio.run(main())
 ```
 
-### asyncio.start_server()の仕組み
-
 `asyncio.start_server()`は以下の処理を行います：
 
-1. 指定されたアドレス・ポートでリッスン開始
-2. クライアント接続ごとに`handle_client`を新しいタスクとして起動
-3. 複数のクライアントを並行処理
+1. 新しいコネクションが確立するたびに実行されるコールバック（ここではクライアントハンドラが相当）を準備（[source](https://github.com/python/cpython/blob/6416e6ebe5b88087ada6f4a56972053edb9c2e01/Lib/asyncio/streams.py#L54)）
+    - コールバックは StreamReader と StreamWriter クラスのインスタンスのペアを引数として受け取る（詳細は後述）
+    - StreamReaderでクライアントから送信されるバイトデータを非同期に読み出し、StreamWriterは逆にクライアントに送られるバイトデータを書き出す
+2. 指定されたアドレス・ポートでリッスンするTCPサーバーを立ち上げ（[source](https://github.com/python/cpython/blob/6416e6ebe5b88087ada6f4a56972053edb9c2e01/Lib/asyncio/base_events.py#L1516)）
 
-**クライアント接続フロー**:
-
-```mermaid
-sequenceDiagram
-    participant Server as TCPサーバ
-    participant Loop as イベントループ
-    participant Client1 as クライアント1
-    participant Client2 as クライアント2
-
-    Server->>Loop: start_server()で起動
-    Note over Server: ポート6379でリッスン中
-
-    Client1->>Server: 接続リクエスト
-    Server->>Loop: handle_client(reader1, writer1)を起動
-    Note over Loop: タスク1を実行中
-
-    Client2->>Server: 接続リクエスト
-    Server->>Loop: handle_client(reader2, writer2)を起動
-    Note over Loop: タスク1とタスク2を並行実行
-
-    Note over Loop: 各タスクは独立して動作
-```
 
 ## StreamReader/StreamWriterによるデータ送受信
 
 ### StreamReaderでデータを読む
 
-**StreamReader**は、非同期にバイトデータを読み取るためのクラスです。
+StreamReaderは、非同期にバイトデータを読み取るためのクラスです。
 
 主なメソッド：
 
@@ -237,7 +222,7 @@ except asyncio.LimitOverrunError:
 
 ### StreamWriterでデータを送る
 
-**StreamWriter**は、非同期にバイトデータを書き込むためのクラスです。
+StreamWriterは、非同期にバイトデータを書き込むためのクラスです。
 
 主なメソッド：
 
@@ -262,18 +247,8 @@ async def handle_client(reader, writer):
     await writer.wait_closed()
 ```
 
-**重要**: `write()`だけでは送信されません。`await drain()`で実際に送信します。
+`write()`だけではクライアントに送信されないことに注意しましょう。`await drain()`で実際に送信する必要があります。
 
-```python
-# ❌ 間違い: drain()を忘れる
-writer.write(b'+PONG\r\n')
-writer.close()  # データが送信されない可能性
-
-# ✅ 正しい: drain()で送信を待つ
-writer.write(b'+PONG\r\n')
-await writer.drain()  # 送信完了を待つ
-writer.close()
-```
 
 ## クライアント処理ループの実装
 
@@ -310,30 +285,7 @@ async def handle_client(reader: StreamReader, writer: StreamWriter) -> None:
         await writer.wait_closed()
 ```
 
-### クリーンアップのベストプラクティス
-
-**finallyブロック**を使い、エラーが発生しても必ずリソースを解放します：
-
-```python
-async def handle_client(reader: StreamReader, writer: StreamWriter) -> None:
-    try:
-        # メイン処理
-        while True:
-            data = await reader.readuntil(b'\r\n')
-            # 処理...
-    except Exception as e:
-        print(f"Error: {e}")
-    finally:
-        # ✅ 必ず実行される（エラー時も正常時も）
-        writer.close()
-        await writer.wait_closed()
-        print("Connection closed")
-```
-
-**なぜfinallyが重要か**:
-- メモリリークの防止
-- ファイルディスクリプタの解放
-- クライアントへの適切な切断通知
+finallyブロックで確実にクリーンナップすることで、ファイルディスクリプタの解放や、クライアントへの適切な切断通知を確実に行うことができます。
 
 ## エラーハンドリング
 
@@ -384,133 +336,6 @@ async def handle_client(reader: StreamReader, writer: StreamWriter) -> None:
         await writer.wait_closed()
 ```
 
-## Graceful Shutdownの実装
-
-### シグナルハンドリング
-
-サーバを適切に停止するには、`Ctrl+C`（SIGINT）を処理します：
-
-```python
-import asyncio
-import signal
-
-async def main():
-    # サーバを起動
-    server = await asyncio.start_server(
-        handle_client, '127.0.0.1', 6379
-    )
-
-    # Graceful shutdown用のイベント
-    shutdown_event = asyncio.Event()
-
-    # シグナルハンドラ
-    def signal_handler():
-        print("\nShutdown signal received")
-        shutdown_event.set()
-
-    # SIGINT（Ctrl+C）をハンドリング
-    loop = asyncio.get_running_loop()
-    loop.add_signal_handler(signal.SIGINT, signal_handler)
-
-    async with server:
-        print("Server started on 127.0.0.1:6379")
-
-        # shutdownシグナルを待つ
-        await shutdown_event.wait()
-
-        print("Shutting down...")
-        server.close()
-        await server.wait_closed()
-
-asyncio.run(main())
-```
-
-### Graceful Shutdownのフロー
-
-```mermaid
-graph TB
-    START[サーバ起動] --> RUN[クライアント接続を処理中]
-    RUN --> SIGNAL{Ctrl+C押下?}
-    SIGNAL -->|いいえ| RUN
-    SIGNAL -->|はい| STOP[新規接続を停止]
-    STOP --> WAIT[既存接続の処理完了を待つ]
-    WAIT --> CLOSE[サーバを閉じる]
-    CLOSE --> END[終了]
-
-    style START fill:#e1f5ff
-    style RUN fill:#e1ffe1
-    style SIGNAL fill:#fff4e1
-    style END fill:#ffe1e1
-```
-
-## 完全な実装例
-
-以下は、基本的なEchoサーバの完全な実装例です：
-
-```python
-import asyncio
-from asyncio import StreamReader, StreamWriter
-
-async def handle_client(reader: StreamReader, writer: StreamWriter) -> None:
-    """クライアント接続を処理するハンドラ"""
-    addr = writer.get_extra_info('peername')
-    print(f"New connection from {addr}")
-
-    try:
-        while True:
-            # クライアントからデータを受信
-            data = await reader.readuntil(b'\r\n')
-            message = data.decode('utf-8').strip()
-            print(f"Received: {message}")
-
-            # エコーバック
-            response = f"Echo: {message}\r\n".encode('utf-8')
-            writer.write(response)
-            await writer.drain()
-
-    except asyncio.IncompleteReadError:
-        print(f"Client {addr} disconnected")
-
-    finally:
-        writer.close()
-        await writer.wait_closed()
-        print(f"Connection from {addr} closed")
-
-
-async def main():
-    """サーバのメイン関数"""
-    server = await asyncio.start_server(
-        handle_client, '127.0.0.1', 8888
-    )
-
-    addr = server.sockets[0].getsockname()
-    print(f"Serving on {addr}")
-
-    async with server:
-        await server.serve_forever()
-
-
-if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("\nShutdown by user")
-```
-
-**動作確認**:
-
-```bash
-# サーバを起動
-python echo_server.py
-
-# 別のターミナルでnetcatで接続
-nc 127.0.0.1 8888
-
-# メッセージを送信
-hello
-# 応答: Echo: hello
-```
-
 ## デバッグのヒント
 
 ### asyncioデバッグモード
@@ -546,31 +371,25 @@ async def handle_client(reader, writer):
         logger.error(f"Error: {e}", exc_info=True)
 ```
 
+## 演習
+
+ここまで学んだ内容を活かして、TCPサーバーを実装してみましょう！
+
+1. TCPServer(server.py)の実装
+mini_redis/server.pyは、現在作成しようとしているRedisクローンの雛形における、サーバー実装の部分です。記述されているdocstringやコメントを参考にしながら、TCPServerクラスのstart(), stop()を実装してみてください。
+
+2. ClientHandler(server.py)の実装
+最初はダミーとして、echoサーバ（入力された受信したデータをそのまま送信するサーバ）を実装してみましょう。
+
+3. \_\_main\_\_.pyの実装
+mini_redis/\_\_main\_\_.pyが、今回作成するRedisクローンのエントリポイントです。ここでTCPServerクラスをインスタンス化し、サーバーの起動処理やクリーンナップ処理を実装しましょう。
+
+4. 起動と動作確認
+`python -m mini_redis` でサーバを起動し、`telnet localhost 6379` で送ったデータが返ってくることを確認しましょう
+
 ## 次のステップ
 
 TCPサーバの基礎を学びました。次は、RESPプロトコルのパース・エンコードを実装します。
 
-👉 次のセクション: [02-protocol-parsing.md](02-protocol-parsing.md)
+次のセクション: [02-protocol-parsing.md](02-protocol-parsing.md)
 
-**実装に進む前に**:
-- [WORKSHOP_GUIDE.md](../../WORKSHOP_GUIDE.md)で実装手順を確認
-- [アーキテクチャドキュメント](../architecture.md)で全体像を把握
-
-## 参考資料
-
-- [Python asyncio公式ドキュメント](https://docs.python.org/3/library/asyncio.html): asyncioの完全なリファレンス
-- [asyncio Streams](https://docs.python.org/3/library/asyncio-stream.html): StreamReader/StreamWriterの詳細
-- [Real Python: Async IO in Python](https://realpython.com/async-io-python/): asyncioの詳しいチュートリアル
-- [Understanding Python's asyncio](https://lucumr.pocoo.org/2016/10/30/i-dont-understand-asyncio/): asyncioの内部動作
-
-## まとめ
-
-- asyncioはイベントループベースの非同期I/Oフレームワーク
-- コルーチン（`async def`）と`await`で非同期処理を実現
-- `asyncio.start_server()`でTCPサーバを簡単に構築
-- StreamReader/StreamWriterでデータの送受信を行う
-- finallyブロックで必ずリソースをクリーンアップ
-- エラーハンドリングで堅牢なサーバを実現
-- Graceful shutdownで適切にサーバを停止
-
-これらの知識を使って、Mini-RedisのTCPサーバを実装しましょう！
