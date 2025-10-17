@@ -2,26 +2,20 @@
 
 ## 学習目標
 
-このセクションでは、コマンド実行層の役割と設計、6つの基本コマンドの仕様と実装（PING, GET, SET, INCR, EXPIRE, TTL）、エラーハンドリングのパターンとエラーメッセージの形式、Passive Expiryの統合方法、そしてredis-cliでの動作確認方法について学びます。
+このセクションでは、コマンド実行部の役割と設計、6つの基本コマンドの仕様と実装（PING, GET, SET, INCR, EXPIRE, TTL）、エラーハンドリングのパターンとエラーメッセージの形式、Passive Expiryの統合方法、そしてredis-cliでの動作確認方法について学びます。
 
 所要時間: 約20分（理論5分＋実装15分）
 
 ## 前提知識
 
-Storageレイヤーの基本操作（get/set/delete）、RESPプロトコルのエンコード方法、そしてPythonの例外処理を理解していることを前提としています。
+RESPプロトコルのエンコード方法、そしてPythonの例外処理を理解していることを前提としています。
 
-## コマンド実行層の役割
+## ストレージ操作
+TODO: 今回mini-redisで実装する機能において必要な、Storageレイヤーの基本操作（get/set/delete）について解説し、実装例を提示する。
 
-コマンド実行層（`commands.py`）は、パースされたコマンドを受け取り、適切な処理を実行するレイヤーです。
+## コマンド実行
 
-### 主な責務
-
-| 責務 | 説明 | 例 |
-|------|------|-----|
-| ルーティング | コマンド名に応じて適切な処理を呼び出す | "GET" → `_get()`, "SET" → `_set()` |
-| 引数検証 | コマンドの引数数・型をチェック | GETは引数1つ必須 |
-| ビジネスロジック | コマンドの仕様に従った処理を実行 | INCRは値を+1して返す |
-| 応答生成 | 実行結果を適切なRESP型で返す | 成功 → `OK`, エラー → `-ERR ...` |
+`commands.py` は、パースされたコマンドを受け取り、引数の数や型といった必要ば検証を行った後、そのコマンドに対応する処理を実行します。実行結果に応じて、適切なRESPデータ型を返却します。
 
 ### コマンド実行のフロー
 
@@ -44,22 +38,22 @@ graph TB
     EXPIRE_EXEC --> VALIDATE5{引数検証}
     TTL_EXEC --> VALIDATE6{引数検証}
 
-    VALIDATE1 -->|OK| EXEC1[ビジネスロジック実行]
+    VALIDATE1 -->|OK| EXEC1[応答（PONG）を生成]
     VALIDATE2 -->|OK| EXPIRY_CHECK[有効期限チェック]
-    VALIDATE3 -->|OK| EXEC3[ビジネスロジック実行]
+    VALIDATE3 -->|OK| EXEC3[値を設定]
     VALIDATE4 -->|OK| EXPIRY_CHECK2[有効期限チェック]
-    VALIDATE5 -->|OK| EXEC5[ビジネスロジック実行]
-    VALIDATE6 -->|OK| EXEC6[ビジネスロジック実行]
+    VALIDATE5 -->|OK| EXEC5[有効期限を設定]
+    VALIDATE6 -->|OK| EXEC6[有効期限を取得]
 
-    VALIDATE1 -->|NG| ERROR
-    VALIDATE2 -->|NG| ERROR
-    VALIDATE3 -->|NG| ERROR
-    VALIDATE4 -->|NG| ERROR
-    VALIDATE5 -->|NG| ERROR
-    VALIDATE6 -->|NG| ERROR
+    VALIDATE1 -->|NG| INVALID[バリデーションエラー]
+    VALIDATE2 -->|NG| INVALID
+    VALIDATE3 -->|NG| INVALID
+    VALIDATE4 -->|NG| INVALID
+    VALIDATE5 -->|NG| INVALID
+    VALIDATE6 -->|NG| INVALID
 
-    EXPIRY_CHECK --> EXEC2[ビジネスロジック実行]
-    EXPIRY_CHECK2 --> EXEC4[ビジネスロジック実行]
+    EXPIRY_CHECK --> EXEC2[データを取得]
+    EXPIRY_CHECK2 --> EXEC4[値を+1]
 
     EXEC1 --> RESPONSE[応答を返す]
     EXEC2 --> RESPONSE
@@ -67,15 +61,17 @@ graph TB
     EXEC4 --> RESPONSE
     EXEC5 --> RESPONSE
     EXEC6 --> RESPONSE
+    INVALID --> RESPONSE
     ERROR --> RESPONSE
 
     style START fill:#e1f5ff
     style ROUTE fill:#fff4e1
     style RESPONSE fill:#e1ffe1
+    style INVALID fill:#ffe1e1
     style ERROR fill:#ffe1e1
 ```
 
-### 基本的な実装パターン
+### 実装例
 
 ```python
 class Commands:
@@ -141,7 +137,7 @@ async def _ping(self, args: list[str]) -> str:
         raise CommandError("ERR wrong number of arguments for 'ping' command")
 ```
 
-**redis-cliでの実行例**:
+redis-cliでの実行例:
 
 ```bash
 > PING
@@ -532,7 +528,7 @@ async def handle_client(reader: StreamReader, writer: StreamWriter) -> None:
 | `EXPIRE` | 期限設定前 |
 | `TTL` | TTL取得前 |
 
-**SETコマンドではチェック不要**: 新しい値で上書きされるため。
+なお、SETコマンドは新しい値で上書きされるため、チェック不要です。
 
 ### 実装パターン
 

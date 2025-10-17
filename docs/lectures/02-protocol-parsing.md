@@ -10,6 +10,15 @@
 
 バイト列とUTF-8エンコーディングの基礎、Pythonの文字列操作、そしてStreamReader/StreamWriterの使い方（前セクション）を理解していることを前提としています。
 
+## RESP
+
+RESP（Redis serialization protocol）は、Redis serverとRedis clientsが通信するためのプロトコルです。実装や解析が容易で、人間が読みやすいという特徴があります。
+
+クライアントはRedisサーバーにコマンドを `Bulk String` の `Array` として送信します。`Array` の最初の（場合によっては2番目の）`Bulk String`はコマンド名です。`Array`のそれ以降の要素はコマンドの引数です。
+サーバーはRESP型で応答します。応答の型はコマンドの実装と、場合によってはクライアントのプロトコルバージョンによって決まります。
+
+`Bulk String`, `Array`, 「応答の型」など、データ型に関する言及が突然出てきて戸惑われたかもしれません。まずは、RedisがサポートするRESPデータ型を一つずつ確認しましょう。
+
 ## RESPデータ型の詳細
 
 RESPには5つの基本データ型があります。各データ型は、先頭1バイトで識別されます。
@@ -17,6 +26,9 @@ RESPには5つの基本データ型があります。各データ型は、先頭
 ### 1. Simple Strings（単純な文字列）
 
 形式: `+{文字列}\r\n`
+
+!!! warning
+    Simple Stringsでは、改行文字（\\rや\\n）を含めてはいけません。必要な場合はBulk Stringsを使用してください。
 
 用途: 短い成功メッセージ（OK、PONGなど）
 
@@ -27,8 +39,6 @@ RESPには5つの基本データ型があります。各データ型は、先頭
 +PONG\r\n
 ```
 
-特徴:
-Simple Stringsは改行文字を含めず、短いメッセージに最適でパースが高速です。
 
 Pythonでの表現:
 
@@ -49,28 +59,30 @@ b'+OK\r\n'
 例:
 
 ```
--ERR unknown command\r\n
--WRONGTYPE value is not an integer\r\n
+-ERR unknown command 'asdf'\r\n
+-WRONGTYPE Operation against a key holding the wrong kind of value\r\n
 ```
 
-特徴:
-ErrorsはSimple Stringsと同じ形式ですが、先頭が`-`になっており、クライアントはこれをエラーとして扱います。
+ErrorsはSimple Stringsと同じ形式ですが、先頭が`-`になっており、クライアントはこれをエラーとして扱います。'-'の直後の最初の大文字の単語（`ERR` や `WRONGTYPE`など）は、返却されるエラーの種類を表しており、error prefixと呼ばれます。
 
 Pythonでの表現:
 
 ```python
 # バイト列
-b'-ERR unknown command\r\n'
+b'-ERR unknown command \'asdf\'\r\n'
 
 # パース結果（エラーとして扱う）
-raise CommandError("ERR unknown command")
+raise CommandError("ERR unknown command 'asdf'")
 ```
 
 ### 3. Integers（整数）
 
 形式: `:{整数}\r\n`
 
-用途: 数値の応答（INCR、TTL、EXPIREなど）
+!!! note
+    `:` の直後は `+` または `-` を取ることができます。どちらもなければ `+` として扱われます。
+
+用途: 数値の応答（INCR、TTL、EXPIREなど）としての使用。コマンドの種別に応じて意味が異なる。
 
 例:
 
@@ -97,6 +109,9 @@ b':42\r\n'
 
 用途: 任意の文字列データ、バイナリデータ
 
+!!! info
+    「任意の文字列」とはいえ、 文字列のサイズは`proto-max-bulk-len` の設定値に制限されます。デフォルトでは512MBです。
+
 例:
 
 ```
@@ -120,7 +135,7 @@ $0\r\n         ← 長さ0
 \r\n           ← 空データ
 ```
 
-Bulk Stringsは長さを事前に指定することで、バイナリセーフを実現しています。改行文字やNull文字を含むデータも安全に扱え、Null値の表現も可能です（`$-1\r\n`）。
+Bulk Stringsは長さを事前に指定することで、改行文字やNull文字を含むデータも安全に扱え、Null値の表現も可能です。
 
 Pythonでの表現:
 
@@ -139,7 +154,7 @@ b'$0\r\n\r\n'  # → ""
 
 形式: `*{要素数}\r\n{要素1}{要素2}...`
 
-用途: コマンドの送信、複数値の応答
+用途: コマンドの送信、複数値の応答（LRANGEコマンドなど）
 
 例1: `PING`コマンド
 
@@ -196,36 +211,9 @@ b'*0\r\n'  # → []
 b'*-1\r\n'  # → None
 ```
 
-## RESPパースアルゴリズム
+## RESPのパース
 
-### パースの全体フロー
-
-```mermaid
-graph TB
-    START[開始] --> READ1[最初の1バイトを読む]
-    READ1 --> CHECK{先頭文字は?}
-
-    CHECK -->|'*'| ARRAY[配列をパース]
-    CHECK -->|'$'| BULK[Bulk Stringをパース]
-    CHECK -->|'+'| SIMPLE[Simple Stringをパース]
-    CHECK -->|':'| INT[Integerをパース]
-    CHECK -->|'-'| ERROR[Errorをパース]
-    CHECK -->|その他| INVALID[エラー: 不正な形式]
-
-    ARRAY --> END[完了]
-    BULK --> END
-    SIMPLE --> END
-    INT --> END
-    ERROR --> END
-    INVALID --> END
-
-    style START fill:#e1f5ff
-    style CHECK fill:#fff4e1
-    style END fill:#e1ffe1
-    style INVALID fill:#ffe1e1
-```
-
-### コマンドパースのステップバイステップ
+### コマンドパースの手順
 
 `GET mykey`コマンドをパースする手順を詳しく見ていきます。
 
@@ -294,7 +282,7 @@ element = data[:-2].decode('utf-8')  # "mykey"
 result = ["GET", "mykey"]
 ```
 
-### 完全なパース実装
+### パーサ実装例
 
 ```python
 import asyncio
@@ -362,7 +350,7 @@ class RESPParser:
         return data[:-2].decode('utf-8')
 ```
 
-## RESPエンコード実装
+## RESPのエンコード
 
 ### エンコードのパターン
 
@@ -435,9 +423,9 @@ encode_bulk_string("こんにちは")  # 日本語（15バイト）
 # → b'$15\r\n\xe3\x81\x93\xe3\x82\x93\xe3\x81\xab\xe3\x81\xa1\xe3\x81\xaf\r\n'
 ```
 
-#### 5. 応答のエンコード（統合）
+#### 5. Redisサーバーからのレスポンスのエンコード
 
-複数の型を自動判別してエンコードする関数：
+複数の型を自動判別してエンコードする
 
 ```python
 def encode_response(value: str | int | None) -> bytes:
