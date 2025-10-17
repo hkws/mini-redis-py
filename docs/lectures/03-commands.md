@@ -11,11 +11,69 @@
 RESPプロトコルのエンコード方法、そしてPythonの例外処理を理解していることを前提としています。
 
 ## ストレージ操作
-TODO: 今回mini-redisで実装する機能において必要な、Storageレイヤーの基本操作（get/set/delete）について解説し、実装例を提示する。
+
+コマンドの実装は`DataStore`（`mini_redis/storage.py`）に依存します。`DataStore`は値の保存と取得、削除といった最小限の責務だけを持ち、期限の判定や破棄は呼び出し側（`ExpiryManager`やコマンド実装）が担当するよう実装します。
+
+### DataStore全体の骨格
+
+`DataStore`は内部に`dict[str, StoreEntry]`を持ち、初期化時に空の辞書を生成するだけです。コマンド側からは非同期処理の中で呼び出されますが、ストレージ内では同期処理として完結しているため追加のロックやawaitは不要です。
+
+```python
+class DataStore:
+    def __init__(self) -> None:
+        self._data: dict[str, StoreEntry] = {}
+
+    def get(self, key: str) -> str | None:
+        # ...
+
+    def set(self, key: str, value: str) -> None:
+        # ...
+
+    def delete(self, key: str) -> bool:
+        # ...
+```
+
+この3メソッドが揃えば、GET/SET/DELETE（およびEXPIRE処理の一部）に必要な最小のストレージAPIが完成します。以降のコマンド実装は、（必要な場合は）期限チェック→`DataStore`操作→RESP変換という流れで組み立てていきます。
+
+### get: 値を読み出す
+- 目的: キーに紐づく値を取得する  
+- 仕様: キーが存在すれば`str`、存在しなければ`None`を返す  
+- 実装ポイント: `dict.get()` を利用し、存在しない場合に例外を投げないようにする。エントリが存在する場合だけ`StoreEntry.value`を返す。
+
+```python
+def get(self, key: str) -> str | None:
+    entry = self._data.get(key)
+    return entry.value if entry else None
+```
+
+### set: 値を保存する
+- 目的: キーに値を設定し、既存の有効期限をリセットする  
+- 仕様: 常に新しい`StoreEntry`を作成して保存する  
+- 実装ポイント: `StoreEntry`の`expiry_at`はデフォルト`None`。再設定時には古いエントリを丸ごと置き換えることで期限をクリアする。
+
+```python
+def set(self, key: str, value: str) -> None:
+    self._data[key] = StoreEntry(value=value)
+```
+
+### delete: 値を取り除く
+- 目的: 指定したキーを削除し、削除できたかどうかを返す  
+- 仕様: 削除できれば`True`、キーがなければ`False`  
+- 実装ポイント: `dict.pop()`を例外処理付きで使うと戻り値の制御が簡単。Passive Expiryで期限切れを検出した際にもこのメソッドを呼び出してキーを掃除する。
+
+```python
+def delete(self, key: str) -> bool:
+    try:
+        self._data.pop(key)
+        return True
+    except KeyError:
+        return False
+```
+
 
 ## コマンド実行
 
-`commands.py` は、パースされたコマンドを受け取り、引数の数や型といった必要ば検証を行った後、そのコマンドに対応する処理を実行します。実行結果に応じて、適切なRESPデータ型を返却します。
+`commands.py` は、パースされたコマンドを受け取り、引数の数や型といった必要ば検証を行った後、そのコマンドに対応する処理を実行します。実行結果に応じて、適切なRESPデータ型で返却します。
 
 ### コマンド実行のフロー
 
@@ -121,7 +179,7 @@ class Commands:
 応答:
 引数がない場合は`"PONG"`（Simple String）を返し、引数がある場合は`message`をそのまま返します（Bulk String）。
 
-実装:
+実装例:
 
 ```python
 async def _ping(self, args: list[str]) -> str:
@@ -152,16 +210,16 @@ PONG
 
 ### 2. GETコマンド
 
-**用途**: キーの値を取得
+用途: キーの値を取得
 
-**構文**: `GET key`
+構文: `GET key`
 
-**応答**:
+応答:
 - キーが存在: 値を返す（Bulk String）
 - キーが存在しない: `None`（Null Bulk String）
 - キーが期限切れ: `None`（削除してからNull返却）
 
-**実装**:
+実装例:
 
 ```python
 async def _get(self, args: list[str]) -> str | None:
@@ -181,7 +239,7 @@ async def _get(self, args: list[str]) -> str | None:
     return self._storage.get(key)
 ```
 
-**redis-cliでの実行例**:
+redis-cliでの実行例:
 
 ```bash
 > SET mykey "Hello"
@@ -196,13 +254,13 @@ OK
 
 ### 3. SETコマンド
 
-**用途**: キーに値を設定
+用途: キーに値を設定
 
-**構文**: `SET key value`
+構文: `SET key value`
 
-**応答**: `"OK"`（Simple String）
+応答: `"OK"`（Simple String）
 
-**実装**:
+実装:
 
 ```python
 async def _set(self, args: list[str]) -> str:
@@ -220,7 +278,7 @@ async def _set(self, args: list[str]) -> str:
     return "OK"
 ```
 
-**redis-cliでの実行例**:
+redis-cliでの実行例:
 
 ```bash
 > SET name "Alice"
@@ -235,19 +293,19 @@ OK
 
 ### 4. INCRコマンド
 
-**用途**: 整数値をインクリメント（+1）
+用途: 整数値をインクリメント（+1）
 
-**構文**: `INCR key`
+構文: `INCR key`
 
-**応答**:
+応答:
 - インクリメント後の値（Integer）
 
-**動作**:
+動作:
 - キーが存在しない: 0から開始して1を返す
 - キーの値が整数: インクリメントした値を返す
 - キーの値が整数でない: エラー
 
-**実装**:
+実装例:
 
 ```python
 async def _incr(self, args: list[str]) -> int:
@@ -285,7 +343,7 @@ async def _incr(self, args: list[str]) -> int:
     return new_value
 ```
 
-**redis-cliでの実行例**:
+redis-cliでの実行例:
 
 ```bash
 > INCR counter
@@ -303,15 +361,15 @@ OK
 
 ### 5. EXPIREコマンド
 
-**用途**: キーに有効期限（秒）を設定
+用途: キーに有効期限（秒）を設定
 
-**構文**: `EXPIRE key seconds`
+構文: `EXPIRE key seconds`
 
-**応答**:
+応答:
 - キーが存在し、期限設定成功: `1`（Integer）
 - キーが存在しない: `0`（Integer）
 
-**実装**:
+実装例:
 
 ```python
 async def _expire(self, args: list[str]) -> int:
@@ -346,7 +404,7 @@ async def _expire(self, args: list[str]) -> int:
     return 1
 ```
 
-**redis-cliでの実行例**:
+redis-cliでの実行例:
 
 ```bash
 > SET mykey "Hello"
@@ -364,16 +422,16 @@ OK
 
 ### 6. TTLコマンド
 
-**用途**: キーの残り有効期限（秒）を取得
+用途: キーの残り有効期限（秒）を取得
 
-**構文**: `TTL key`
+構文: `TTL key`
 
-**応答**:
+応答:
 - 有効期限あり: 残り秒数（Integer）
 - 有効期限なし: `-1`（Integer）
 - キーが存在しない: `-2`（Integer）
 
-**実装**:
+実装:
 
 ```python
 async def _ttl(self, args: list[str]) -> int:
@@ -403,7 +461,7 @@ async def _ttl(self, args: list[str]) -> int:
     return ttl
 ```
 
-**redis-cliでの実行例**:
+redis-cliでの実行例:
 
 ```bash
 > SET mykey "Hello"
@@ -444,33 +502,12 @@ Redisのエラーメッセージは、以下の形式に従います：
 
 | エラー種別 | 形式 | 例 |
 |-----------|------|-----|
-| 未知のコマンド | `ERR unknown command '{cmd}'` | `ERR unknown command 'HELLO'` |
-| 引数数エラー | `ERR wrong number of arguments for '{cmd}' command` | `ERR wrong number of arguments for 'get' command` |
-| 型エラー | `ERR value is not an integer or out of range` | （INCRで非整数値） |
-| 一般エラー | `ERR {message}` | `ERR invalid expire time` |
+| 未知のコマンド | `ERR unknown command '{cmd}'` | 127.0.0.1:6380> UNKNOWN 1 <br/>(error) ERR unknown command 'UNKNOWN', with args beginning with: '1' |
+| 引数数エラー | `ERR wrong number of arguments for '{cmd}' command` | 127.0.0.1:6380> SET hoge <br/>(error) ERR wrong number of arguments for 'set' command |
+| 型エラー | `ERR value is not an integer or out of range` | 127.0.0.1:6380> EXPIRE key hoge <br/>(error) ERR value is not an integer or out of range |
+| 一般エラー | `ERR {message}` |  |
 
-### エラーハンドリングのフロー
-
-```mermaid
-graph TB
-    START[コマンドを受信] --> TRY[try: execute実行]
-
-    TRY -->|成功| ENCODE_OK[結果をエンコード]
-    TRY -->|CommandError| ENCODE_ERR[エラーメッセージをエンコード]
-    TRY -->|その他のException| ENCODE_INTERNAL[内部エラーをエンコード]
-
-    ENCODE_OK --> SEND[クライアントに送信]
-    ENCODE_ERR --> SEND
-    ENCODE_INTERNAL --> SEND
-
-    style START fill:#e1f5ff
-    style TRY fill:#fff4e1
-    style ENCODE_ERR fill:#ffe1e1
-    style ENCODE_INTERNAL fill:#ffe1e1
-    style SEND fill:#e1ffe1
-```
-
-### サーバ側の実装例
+### エラーハンドリングの実装例
 
 ```python
 async def handle_client(reader: StreamReader, writer: StreamWriter) -> None:
@@ -509,68 +546,6 @@ async def handle_client(reader: StreamReader, writer: StreamWriter) -> None:
     finally:
         writer.close()
         await writer.wait_closed()
-```
-
-## Passive Expiryの統合
-
-### Passive Expiryとは
-
-**Passive Expiry**は、コマンド実行時に有効期限をチェックし、期限切れのキーを削除する仕組みです。
-
-### 統合ポイント
-
-以下のコマンドでは、処理の**最初**にPassive Expiryチェックを行います：
-
-| コマンド | チェックタイミング |
-|---------|------------------|
-| `GET` | キー取得前 |
-| `INCR` | 値読み取り前 |
-| `EXPIRE` | 期限設定前 |
-| `TTL` | TTL取得前 |
-
-なお、SETコマンドは新しい値で上書きされるため、チェック不要です。
-
-### 実装パターン
-
-```python
-async def _get(self, args: list[str]) -> str | None:
-    key = args[0]
-
-    # ✅ Passive Expiryチェック
-    if self._expiry.check_and_remove_expired(key):
-        # 期限切れで削除済み
-        return None
-
-    # 値を取得
-    return self._storage.get(key)
-```
-
-### check_and_remove_expired()の動作
-
-```python
-def check_and_remove_expired(self, key: str) -> bool:
-    """
-    キーが期限切れかチェックし、期限切れなら削除する
-
-    Returns:
-        True: 期限切れで削除した
-        False: 期限内または期限未設定
-    """
-    expiry_time = self._storage.get_expiry(key)
-
-    if expiry_time is None:
-        # 有効期限が設定されていない
-        return False
-
-    current_time = int(time.time())
-
-    if current_time >= expiry_time:
-        # 期限切れ: キーを削除
-        self._storage.delete(key)
-        return True
-
-    # 期限内
-    return False
 ```
 
 ## 動作確認の手順
@@ -619,29 +594,6 @@ OK
 
 > GET counter
 "3"
-```
-
-**有効期限**:
-
-```bash
-> SET temp "temporary data"
-OK
-
-> EXPIRE temp 10
-(integer) 1
-
-> TTL temp
-(integer) 9
-
-> GET temp
-"temporary data"
-
-# 10秒後
-> GET temp
-(nil)
-
-> TTL temp
-(integer) -2
 ```
 
 **エラーケース**:
@@ -705,9 +657,3 @@ async def execute(self, command: list[str]) -> str | int | None:
 
 - [Redisコマンドリファレンス](https://redis.io/commands/): 各コマンドの詳細仕様
 - [Python例外処理](https://docs.python.org/3/tutorial/errors.html): 例外処理のベストプラクティス
-
-## まとめ
-
-コマンド実行層はルーティング、引数検証、ビジネスロジック、応答生成を担当します。6つの基本コマンド（PING, GET, SET, INCR, EXPIRE, TTL）を実装し、エラーメッセージはRedis互換の形式で返します。Passive Expiryを統合することで期限切れキーを自動削除し、redis-cliで動作確認とデバッグを行います。テストで実装の正確性を検証することも重要です。
-
-これらの知識を使って、Mini-Redisのコマンド実行層を実装しましょう！
