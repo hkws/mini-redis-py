@@ -564,7 +564,7 @@ redis-cli -p 6379
 
 ### 3. 各コマンドをテスト
 
-**基本操作**:
+基本操作:
 
 ```bash
 > PING
@@ -577,7 +577,7 @@ OK
 "Hello, World!"
 ```
 
-**カウンター**:
+カウンター:
 
 ```bash
 > SET counter "0"
@@ -596,7 +596,7 @@ OK
 "3"
 ```
 
-**エラーケース**:
+エラーケース:
 
 ```bash
 > GET
@@ -647,13 +647,3 @@ async def execute(self, command: list[str]) -> str | int | None:
 基本コマンドの実装を学びました。次は、有効期限管理の2段階メカニズム（Passive + Active Expiry）を実装します。
 
 👉 次のセクション: [04-expiry.md](04-expiry.md)
-
-**実装に進む前に**:
-- `mini_redis/commands.py`のTODOコメントを確認
-- `mini_redis/storage.py`でストレージ操作を実装
-- `tests/test_commands.py`でテストを実行
-
-## 参考資料
-
-- [Redisコマンドリファレンス](https://redis.io/commands/): 各コマンドの詳細仕様
-- [Python例外処理](https://docs.python.org/3/tutorial/errors.html): 例外処理のベストプラクティス

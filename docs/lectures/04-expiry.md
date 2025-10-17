@@ -33,30 +33,14 @@ for i in range(10000):
 
 | ユースケース | 有効期限 | 理由 |
 |------------|---------|------|
-| **セッション管理** | 30分〜24時間 | ユーザーの非アクティブ期間後に自動削除 |
-| **キャッシュ** | 1分〜1時間 | 古いデータを自動的に無効化 |
-| **レート制限** | 1分〜1時間 | 時間枠ごとにカウンターをリセット |
-| **一時トークン** | 数分 | ワンタイムパスワードやトークンの有効期限 |
+| セッション管理 | 30分〜24時間 | ユーザーの非アクティブ期間後に自動削除 |
+| キャッシュ | 1分〜1時間 | 古いデータを自動的に無効化 |
+| レート制限 | 1分〜1時間 | 時間枠ごとにカウンターをリセット |
+| 一時トークン | 数分 | ワンタイムパスワードやトークンの有効期限 |
 
 ### Redisの2段階有効期限管理
 
-Redisは、**Passive Expiry**と**Active Expiry**の2つのメカニズムを組み合わせて、効率的にメモリを管理します。
-
-```mermaid
-graph LR
-    KEY[キーの作成] --> EXPIRE[EXPIREで期限設定]
-    EXPIRE --> PASSIVE[Passive Expiry<br/>アクセス時にチェック]
-    EXPIRE --> ACTIVE[Active Expiry<br/>定期的にサンプリング]
-
-    PASSIVE --> DELETE1[期限切れなら削除]
-    ACTIVE --> DELETE2[期限切れなら削除]
-
-    style KEY fill:#e1f5ff
-    style PASSIVE fill:#e1ffe1
-    style ACTIVE fill:#fff4e1
-    style DELETE1 fill:#ffe1e1
-    style DELETE2 fill:#ffe1e1
-```
+Redisは、Passive ExpiryとActive Expiryの2つのメカニズムを組み合わせて、効率的にメモリを管理します。
 
 ## Passive Expiry（受動的期限管理）
 
@@ -68,10 +52,10 @@ Passive Expiryは、キーにアクセスされた時に有効期限をチェッ
 
 ```mermaid
 sequenceDiagram
-    participant Client as クライアント
-    participant Command as コマンド層
-    participant Expiry as Expiry Manager
-    participant Storage as ストレージ
+    participant Client as ClientHandler
+    participant Command as CommandHandler
+    participant Expiry as ExpiryManager
+    participant Storage as DataStore
 
     Client->>Command: GET mykey
     Command->>Expiry: check_and_remove_expired("mykey")
@@ -164,34 +148,13 @@ class ExpiryManager:
 
 ### Passive Expiryの利点
 
-| 利点 | 説明 |
-|------|------|
-| **シンプル** | 実装が容易で理解しやすい |
-| **CPU効率** | アクセス時のみチェックするため、CPU負荷が低い |
-| **正確** | アクセス直前にチェックするため、期限切れデータを返さない |
+Passive Expiryの最大の利点は、実装がシンプルで理解しやすい点です。アクセス時にのみ有効期限をチェックするため、CPU負荷が低く効率的に動作します。また、キーにアクセスする直前に期限をチェックするため、期限切れのデータをクライアントに返してしまう心配がなく、正確性も高くなっています。
 
 ### Passive Expiryの欠点
 
-| 欠点 | 説明 |
-|------|------|
-| **メモリ効率** | アクセスされないキーは残り続ける |
-| **遅延削除** | 実際の有効期限より後に削除される可能性 |
+一方で、Passive Expiryのみでは、実際の有効期限よりも後に削除される可能性があります。そのため、アクセスされないキーは期限が切れてもメモリに残り続け、削除が遅延することもあります。
 
-**具体例**:
-
-```python
-# 100個のキーに10秒の期限を設定
-for i in range(100):
-    redis.set(f"key:{i}", f"value_{i}")
-    redis.expire(f"key:{i}", 10)
-
-# 10秒後...
-# - 50個のキーはアクセスされ、削除された（Passive Expiry）
-# - 残り50個はアクセスされず、メモリに残っている
-# → メモリリーク！
-```
-
-この問題を解決するのが、**Active Expiry**です。
+この問題を解決するのが、Active Expiryです。Passive Expiryによってアクセスされるキーを効率的に削除し、Active Expiryによってアクセスされないキーも確実に削除します。
 
 ## Active Expiry（能動的期限管理）
 
@@ -201,13 +164,11 @@ Active Expiryは、定期的にランダムなキーをサンプリングし、�
 
 ### アルゴリズム
 
-Active Expiryは以下の手順で動作します。1秒ごとにバックグラウンドタスクを起動し、有効期限が設定されたキーからランダムに20個をサンプリングします。各キーの期限をチェックして期限切れなら削除し、削除率が25%を超えた場合は即座に再実行します（ステップ2に戻る）。削除率が25%以下なら、次の1秒まで待機します。
+Active Expiryにおいては、まず1秒ごとにバックグラウンドタスクを起動し、有効期限が設定されたキーからランダムに20個をサンプリングします。各キーの期限をチェックして期限切れなら削除し、削除率が25%を超えた場合は即座に再実行します（ステップ2に戻る）。削除率が25%以下なら、次の1秒まで待機します。
 
-なぜ削除率でループするのか:
+削除率が高い（25%超）ということは、多くのキーが期限切れになっている可能性が高いと考えられるため、再度サンプリングして削除するのです。
 
-削除率が高い（25%超）ということは、多くのキーが期限切れになっている可能性が高いため、再度サンプリングして効率的に削除します。
-
-### アルゴリズムのフローチャート
+TODO: これが正しいことを確認
 
 ```mermaid
 graph TB
@@ -236,7 +197,7 @@ graph TB
     style SLEEP fill:#e1ffe1
 ```
 
-### 実装
+### 実装例
 
 ```python
 import asyncio
@@ -334,6 +295,8 @@ class ExpiryManager:
 | サンプルサイズ | 20個 | 統計的に十分なサンプル数 |
 | 削除率閾値 | 25% | 多くの期限切れキーが残っている可能性 |
 
+TODO: これが正しいことを確認
+
 パラメータの調整:
 
 ```python
@@ -349,24 +312,6 @@ THRESHOLD = 0.30       # 30%閾値
 ```
 
 ## asyncioバックグラウンドタスク
-
-### タスクのライフサイクル
-
-```mermaid
-graph TB
-    CREATE[asyncio.create_task<br/>タスク作成] --> RUN[タスク実行中]
-    RUN --> CANCEL{キャンセル?}
-    CANCEL -->|いいえ| RUN
-    CANCEL -->|はい| CANCELLED[CancelledError発生]
-    CANCELLED --> CLEANUP[クリーンアップ]
-    CLEANUP --> END[終了]
-
-    style CREATE fill:#e1f5ff
-    style RUN fill:#e1ffe1
-    style CANCEL fill:#fff4e1
-    style CANCELLED fill:#ffe1e1
-    style END fill:#ffe1e1
-```
 
 ### タスクの作成と管理
 
@@ -419,59 +364,6 @@ async def _active_expiry_loop(self) -> None:
         raise  # CancelledErrorを再発生させて終了
 ```
 
-### デバッグのヒント
-
-```python
-async def _active_expiry_loop(self) -> None:
-    """Active Expiryのメインループ"""
-    iteration = 0
-
-    try:
-        while True:
-            iteration += 1
-            print(f"[Active Expiry] Iteration {iteration}")
-
-            await asyncio.sleep(1)
-
-            deleted = await self._sample_and_remove_expired()
-            print(f"[Active Expiry] Deleted {deleted} keys")
-
-    except asyncio.CancelledError:
-        print(f"[Active Expiry] Stopped after {iteration} iterations")
-        raise
-```
-
-## Passive vs Active Expiryの比較
-
-| 観点 | Passive Expiry | Active Expiry |
-|------|---------------|--------------|
-| **トリガー** | キーアクセス時 | 定期的（1秒ごと） |
-| **削除タイミング** | アクセス直前 | バックグラウンド |
-| **CPU効率** | 高い（アクセス時のみ） | 低い（定期実行） |
-| **メモリ効率** | 低い（未アクセスキーが残る） | 高い（積極的削除） |
-| **正確性** | 高い（アクセス前に削除） | 中程度（1秒遅延） |
-| **実装複雑度** | 低い | 中程度（バックグラウンドタスク） |
-
-### 2つを組み合わせる理由
-
-```mermaid
-graph LR
-    A[キー作成] --> B{アクセスされる?}
-    B -->|はい| C[Passive Expiry<br/>で削除]
-    B -->|いいえ| D[Active Expiry<br/>で削除]
-
-    C --> E[メモリ解放]
-    D --> E
-
-    style A fill:#e1f5ff
-    style B fill:#fff4e1
-    style C fill:#e1ffe1
-    style D fill:#fff4e1
-    style E fill:#e1ffe1
-```
-
-- **Passive Expiry**: アクセスされるキーを効率的に削除
-- **Active Expiry**: アクセスされないキーも確実に削除
 
 ## 動作確認
 
@@ -534,19 +426,9 @@ pytest tests/test_expiry.py::TestActiveExpiry -v
 
 👉 次のセクション: [05-summary.md](05-summary.md)
 
-**実装に進む前に**:
-- `mini_redis/expiry.py`のTODOコメントを確認
-- Passive ExpiryとActive Expiryの両方を実装
-- テストで動作を検証
-
 ## 参考資料
 
 - [Redisの有効期限管理（公式）](https://redis.io/commands/expire/): EXPIREコマンドの詳細
 - [Python asyncio Tasks](https://docs.python.org/3/library/asyncio-task.html): バックグラウンドタスクの管理
 - [Redis内部実装解説](https://redis.io/docs/reference/internals/): Redisの内部メカニズム
 
-## まとめ
-
-有効期限管理は、メモリ効率とデータ鮮度維持に不可欠です。Passive Expiryはアクセス時に期限をチェックすることでCPU効率を重視し、Active Expiryは定期的にランダムサンプリングすることでメモリ効率を重視しています。この2つを組み合わせることで、効率的かつ確実な期限管理を実現できます。asyncioバックグラウンドタスクで定期実行を実装し、パラメータ（間隔、サンプルサイズ、閾値）で動作を調整することも可能です。
-
-これらの知識を使って、Mini-Redisの有効期限管理を実装しましょう！
