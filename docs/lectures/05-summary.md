@@ -43,6 +43,100 @@ Passive Expiry（コマンド実行時の期限チェック）、Active Expiry�
 ランダムサンプリングによる削除アルゴリズム、削除率による適応的実行、そしてタスクのライフサイクル管理について学びました。
 
 
+## 統合テストと動作確認
+
+すべての実装が完了したら、Mini-Redisを起動して動作確認しましょう！（目安時間: 10分）
+
+### 1. サーバを起動
+
+```bash
+python -m mini_redis
+```
+
+### 2. redis-cliで接続
+
+別のターミナルで：
+
+```bash
+redis-cli -p 6379
+```
+
+### 3. 基本コマンドをテスト
+
+```bash
+# 接続確認
+> PING
+PONG
+
+# 基本操作
+> SET mykey "hello"
+OK
+
+> GET mykey
+"hello"
+
+# カウンター
+> INCR counter
+(integer) 1
+
+> INCR counter
+(integer) 2
+
+> INCR counter
+(integer) 3
+
+> GET counter
+"3"
+```
+
+### 4. 有効期限をテスト
+
+```bash
+# 10秒の期限を設定
+> SET temp "data"
+OK
+
+> EXPIRE temp 10
+(integer) 1
+
+> TTL temp
+(integer) 9
+
+# 10秒後にアクセス
+> GET temp
+(nil)  # Active Expiryで削除済み
+```
+
+### 5. エラーケースをテスト
+
+```bash
+# 引数数エラー
+> GET
+(error) ERR wrong number of arguments for 'get' command
+
+# 未知のコマンド
+> HELLO
+(error) ERR unknown command 'HELLO'
+
+# 型エラー
+> SET text "not a number"
+OK
+
+> INCR text
+(error) ERR value is not an integer or out of range
+```
+
+### 学習内容の振り返り
+
+ここまでで、以下を習得しました：
+
+- ✅ asyncioを使ったTCPサーバの実装パターン
+- ✅ RESPプロトコルの仕様とパーサの実装
+- ✅ 基本的なRedisコマンドの動作原理
+- ✅ Redisの期限管理メカニズム（Passive + Active Expiration）
+
+おめでとうございます！Mini-Redisワークショップ完走です！
+
 ## 発展課題
 
 Mini-Redisの基本機能は完成しましたが、さらに学びを深めるための発展課題があります。

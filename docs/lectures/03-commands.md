@@ -548,6 +548,127 @@ async def handle_client(reader: StreamReader, writer: StreamWriter) -> None:
         await writer.wait_closed()
 ```
 
+## 実装ガイド（ハンズオン）
+
+ここまで学んだ内容を活かして、ストレージ層とコマンド実行層を実装しましょう！（目安時間: 35分）
+
+### パート1: データストレージ層の実装（15分）
+
+#### 実装する内容
+
+1. `mini_redis/storage.py` を開く
+2. 基本操作を実装
+   - `get()`: キーの値を取得
+   - `set()`: キーに値を設定
+   - `delete()`: キーを削除
+   - `exists()`: キーの存在確認
+3. 有効期限管理を実装
+   - `set_expiry()`: 有効期限を設定
+   - `get_expiry()`: 有効期限を取得
+   - `get_all_keys()`: すべてのキーを取得
+
+#### テストで確認
+
+```bash
+pytest tests/test_storage.py -v
+```
+
+### パート2: コマンド実行層の実装（20分）
+
+#### 実装する内容
+
+1. `mini_redis/commands.py` を開く
+2. `execute()` メソッドを実装
+   - コマンド名を取得し、対応するメソッドにルーティング
+   - 引数の数と型を検証
+3. 各コマンドを実装
+   - `execute_ping()`: "PONG"を返す
+   - `execute_get()`: キーの値を取得
+   - `execute_set()`: キーに値を設定
+   - `execute_incr()`: 値を1増加
+   - `execute_expire()`: 有効期限を設定
+   - `execute_ttl()`: 残り有効秒数を取得
+
+**重要**: GET/INCR/EXPIRE/TTLの最初で `check_and_remove_expired(key)` を呼び出す（Passive Expiry）
+
+#### 実装のポイント
+
+**1. PINGコマンド**
+
+```python
+async def execute_ping(self, args: list[str]) -> str:
+    if len(args) == 0:
+        return "PONG"
+    elif len(args) == 1:
+        return args[0]
+    else:
+        raise CommandError("ERR wrong number of arguments for 'ping' command")
+```
+
+**2. INCRコマンド（型エラー処理に注意）**
+
+```python
+async def execute_incr(self, key: str) -> int:
+    # Passive Expiryチェック
+    if self._expiry.check_and_remove_expired(key):
+        self._store.set(key, "1")
+        return 1
+
+    current = self._store.get(key)
+    if current is None:
+        self._store.set(key, "1")
+        return 1
+
+    # 整数変換を試みる
+    try:
+        value = int(current)
+    except ValueError:
+        raise CommandError("ERR value is not an integer or out of range")
+
+    new_value = value + 1
+    self._store.set(key, str(new_value))
+    return new_value
+```
+
+#### よくある間違いと対処法
+
+**1. Passive Expiryの呼び出し忘れ**
+
+```python
+# ❌ 間違い
+async def execute_get(self, key: str) -> str | None:
+    return self._store.get(key)  # 期限チェックなし
+
+# ✅ 正しい
+async def execute_get(self, key: str) -> str | None:
+    self._expiry.check_and_remove_expired(key)  # 期限チェック
+    return self._store.get(key)
+```
+
+**2. INCRコマンドの型エラー処理忘れ**
+
+```python
+# ❌ 間違い
+int_value = int(current_value)  # ValueErrorが発生する可能性
+
+# ✅ 正しい
+try:
+    int_value = int(current_value)
+except ValueError:
+    raise CommandError("ERR value is not an integer or out of range")
+```
+
+#### テストで確認
+
+```bash
+# 全コマンドのテスト
+pytest tests/test_commands.py -v
+
+# 特定のコマンドのみ
+pytest tests/test_commands.py::TestCommands::test_ping -v
+pytest tests/test_commands.py::TestCommands::test_incr -v
+```
+
 ## 動作確認の手順
 
 ### 1. サーバを起動

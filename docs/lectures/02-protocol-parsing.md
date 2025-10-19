@@ -462,13 +462,72 @@ encode_response(None)      # → b'$-1\r\n'
 
 5. **Null値の処理忘れ**: Bulk Stringの長さが`-1`の場合はNull値を表します。データ読み取り前に長さをチェックし、`-1`の場合は特別に処理する必要があります。そうしないと`readexactly()`に負の値が渡されてエラーになります。
 
-## 演習
+## 実装ガイド（ハンズオン）
 
-1. RESPParser(protocol.py)の実装
-mini_redis/protocol.pyにあるRESPParserには、未実装のメソッドがあります。本資料とコメント、docstringを参考にしながら、未実装のメソッドを実装してみてください。
+ここまで学んだ内容を活かして、RESPプロトコルのパース・エンコードを実装しましょう！（目安時間: 15分）
 
-2. テストの実行
-以下のコマンドでテストを実行し、全てpassすることを確認しましょう。
+### 実装する内容
+
+1. `mini_redis/protocol.py` を開く
+2. `parse_command()` メソッドを実装
+   - `reader.readuntil(b'\r\n')` で1行ずつ読み取る
+   - Arrays形式 (`*N\r\n`) をパース
+   - Bulk Strings形式 (`$length\r\ndata\r\n`) をパース
+3. エンコード関数を実装
+   - `encode_simple_string()`: `+OK\r\n`
+   - `encode_integer()`: `:42\r\n`
+   - `encode_bulk_string()`: `$3\r\nfoo\r\n` または `$-1\r\n`
+   - `encode_error()`: `-ERR message\r\n`
+
+### 実装のポイント
+
+#### パース時の注意点
+
+1. **CRLF削除**: `readuntil(b'\r\n')`で読んだ行には末尾に`\r\n`が含まれているので、`line[:-2]`で削除する
+2. **Null値の処理**: Bulk Stringの長さが`-1`の場合はNullを表す
+3. **バイト長の正確な読み取り**: `readexactly(length + 2)`で指定バイト数＋CRLF分を読む
+
+#### エンコード時の注意点
+
+1. **バイト長と文字数の違い**: `len(text.encode('utf-8'))`でバイト数を取得（文字数ではない）
+2. **Null値の表現**: `$-1\r\n`で表す
+
+### よくある間違いと対処法
+
+#### 1. CRLF削除忘れ
+
+```python
+# ❌ 間違い
+line = await reader.readuntil(b"\r\n")
+# \r\nが含まれたまま
+
+# ✅ 正しい
+line = await reader.readuntil(b"\r\n")
+line = line[:-2]  # \r\nを削除
+```
+
+#### 2. Bulk Stringの長さ計算ミス
+
+```python
+# ❌ 間違い
+length = len(value)  # 文字数
+
+# ✅ 正しい
+value_bytes = value.encode('utf-8')
+length = len(value_bytes)  # バイト数
+```
+
+#### 3. readexactly()の使い忘れ
+
+```python
+# ❌ 間違い
+data = await reader.read(length)  # 指定バイト数未満の可能性
+
+# ✅ 正しい
+data = await reader.readexactly(length + 2)  # データ + \r\n
+```
+
+### テストで確認
 
 ```bash
 # プロトコルのテストのみ実行
@@ -478,9 +537,23 @@ pytest tests/test_protocol.py -v
 pytest tests/test_protocol.py::TestRESPParser -v
 ```
 
+### デバッグのヒント
+
+バイト列を確認するときは、`repr()`を使う：
+
+```python
+print(f"Received: {line!r}")
+# 出力例: Received: b'*2\r\n'
+```
+
+もし詰まった場合は：
+
+1. `WORKSHOP_GUIDE.md`の「よくある間違い」セクションを確認
+2. テストコードで期待される動作を確認
+3. 完成版コード（`solutions/mini_redis/protocol.py`）と比較
 
 ## 次のステップ
 
-RESPプロトコルのパース・エンコードを学びました。次は、これらを使ってRedisコマンドを実装します。
+RESPプロトコルのパース・エンコードを学び、実装しました。次は、これらを使ってRedisコマンドを実装します。
 
 👉 次のセクション: [03-commands.md](03-commands.md)

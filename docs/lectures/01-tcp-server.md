@@ -371,25 +371,103 @@ async def handle_client(reader, writer):
         logger.error(f"Error: {e}", exc_info=True)
 ```
 
-## 演習
+## 実装ガイド（ハンズオン）
 
-ここまで学んだ内容を活かして、TCPサーバーを実装してみましょう！
+ここまで学んだ内容を活かして、TCPサーバーを実装していきましょう！（目安時間: 15分）
 
-1. TCPServer(server.py)の実装
-mini_redis/server.pyは、現在作成しようとしているRedisクローンの雛形における、サーバー実装の部分です。記述されているdocstringやコメントを参考にしながら、TCPServerクラスのstart(), stop()を実装してみてください。
+### 実装する内容
 
-2. ClientHandler(server.py)の実装
-最初はダミーとして、echoサーバ（入力された受信したデータをそのまま送信するサーバ）を実装してみましょう。
+1. `mini_redis/server.py`を開く
+2. `ClientHandler.handle()` メソッドを実装
+   - コマンドの読み取り→パース→実行→応答のループ
+   - 結果の型判定（str/int/None）とエンコード
+   - エラーハンドリング（CommandError、RESPProtocolError等）
+   - `finally`句でクリーンアップ
 
-3. \_\_main\_\_.pyの実装
-mini_redis/\_\_main\_\_.pyが、今回作成するRedisクローンのエントリポイントです。ここでTCPServerクラスをインスタンス化し、サーバーの起動処理やクリーンナップ処理を実装しましょう。
+**重要**: `TCPServer.start()`と`stop()`は実装済みです。`ClientHandler.handle()`のみ実装してください。
 
-4. 起動と動作確認
-`python -m mini_redis` でサーバを起動し、`telnet localhost 6379` で送ったデータが返ってくることを確認しましょう
+### 実装のポイント
+
+`ClientHandler.handle()`は以下の構造で実装します：
+
+```python
+async def handle(self) -> None:
+    """クライアント接続を処理する"""
+    try:
+        while True:
+            # 1. コマンドをパース
+            command = await self._parser.parse_command(self._reader)
+
+            # 2. コマンドを実行
+            result = await self._commands.execute(command)
+
+            # 3. 結果の型に応じてエンコード
+            if isinstance(result, str):
+                response = encode_bulk_string(result)
+            elif isinstance(result, int):
+                response = encode_integer(result)
+            elif result is None:
+                response = encode_bulk_string(None)
+            else:
+                response = encode_error("ERR unknown response type")
+
+            # 4. 応答を送信
+            self._writer.write(response)
+            await self._writer.drain()
+
+    except asyncio.IncompleteReadError:
+        # クライアントが切断
+        pass
+    except RESPProtocolError as e:
+        # プロトコルエラー
+        error_response = encode_error(str(e))
+        self._writer.write(error_response)
+        await self._writer.drain()
+    except CommandError as e:
+        # コマンドエラー
+        error_response = encode_error(str(e))
+        self._writer.write(error_response)
+        await self._writer.drain()
+    except Exception as e:
+        # 予期しないエラー
+        logger.exception("Unexpected error")
+    finally:
+        # 必ずクリーンアップ
+        self._writer.close()
+        await self._writer.wait_closed()
+```
+
+### テストで確認
+
+```bash
+pytest tests/test_server.py -v
+```
+
+### 動作確認
+
+サーバを起動して、telnetで接続してみましょう：
+
+```bash
+# ターミナル1: サーバを起動
+python -m mini_redis
+
+# ターミナル2: telnetで接続
+telnet localhost 6379
+```
+
+この段階では、まだRESPプロトコルのパーサやコマンド実行が未実装なので、エラーが返ってくるはずです。これは正常です。
+
+### デバッグのヒント
+
+もし詰まった場合は：
+
+1. `logger.debug()`でログを追加して、どこまで処理が進んでいるか確認
+2. `asyncio.run(main(), debug=True)`でデバッグモードを有効化
+3. 完成版コード（`solutions/mini_redis/server.py`）と比較
 
 ## 次のステップ
 
-TCPサーバの基礎を学びました。次は、RESPプロトコルのパース・エンコードを実装します。
+TCPサーバの基礎を学び、実装しました。次は、RESPプロトコルのパース・エンコードを実装します。
 
 次のセクション: [02-protocol-parsing.md](02-protocol-parsing.md)
 

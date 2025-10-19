@@ -243,9 +243,85 @@ PING\r
 
 
 
+## 実装の準備
+
+ここからは、実際に手を動かしてMini-Redisを実装していきます。まずは環境をセットアップしましょう。
+
+### セットアップ
+
+```bash
+# リポジトリをクローン（既にクローン済みの場合はスキップ）
+git clone <repository-url>
+cd mini-redis-py
+
+# 開発用ツールを含めてインストール
+pip install -e ".[dev]"
+
+# テストが実行できることを確認（最初は全て失敗するのが正常）
+pytest
+```
+
+**注意**: 最初はすべてのテストが `NotImplementedError` で失敗します。これは正常です。実装を進めるにつれて、テストが通るようになります。
+
+### 完成イメージを確認
+
+実装を始める前に、完成版のMini-Redisを動かして、どんなものを作るのかイメージを掴みましょう。
+
+```bash
+# ターミナル1: 完成版サーバを起動
+python -m solutions.mini_redis
+```
+
+別のターミナルで`redis-cli`を使って接続します：
+
+```bash
+# ターミナル2: redis-cliで接続
+redis-cli -p 16379
+```
+
+以下のコマンドを試してみましょう：
+
+```bash
+# 接続確認
+> PING
+PONG
+
+# キーに値を設定
+> SET mykey "Hello, Redis!"
+OK
+
+# キーから値を取得
+> GET mykey
+"Hello, Redis!"
+
+# カウンターをインクリメント
+> SET counter "10"
+OK
+> INCR counter
+(integer) 11
+> INCR counter
+(integer) 12
+
+# 有効期限を設定（10秒後に自動削除）
+> EXPIRE counter 10
+(integer) 1
+
+# 残り時間を確認
+> TTL counter
+(integer) 9
+
+# ...10秒後
+> GET counter
+(nil)
+```
+
+このワークショップでは、これらのコマンドがどのように動作するかを理解しながら、実装していきます。
+
+完成イメージが掴めたら、Ctrl+Cでサーバを停止し、次のセクションに進みましょう。
+
 ## 次のステップ
 
-本セクションでは、Redisの基本概念とRESPプロトコルの構造を学びました。
+本セクションでは、Redisの基本概念とRESPプロトコルの構造を学び、開発環境をセットアップしました。
 
 以降のセクションでは、以下の内容を実装していきます：
 

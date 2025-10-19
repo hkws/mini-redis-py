@@ -365,6 +365,137 @@ async def _active_expiry_loop(self) -> None:
 ```
 
 
+## 実装ガイド（ハンズオン）
+
+ここまで学んだ内容を活かして、有効期限管理（Passive + Active Expiry）を実装しましょう！（目安時間: 20分）
+
+### 実装する内容
+
+1. `mini_redis/expiry.py` を開く
+2. `check_and_remove_expired()` を実装（Passive Expiry）
+   - 有効期限をチェック
+   - 期限切れの場合はキーを削除
+3. `start_active_expiry()` と `_active_expiry_loop()` を実装（Active Expiry）
+   - 1秒ごとにバックグラウンドタスクを実行
+   - ランダムに20キーをサンプリング
+   - 期限切れキーを削除
+   - 削除率が25%を超える場合は即座に再実行
+
+### 実装のポイント
+
+#### 1. Passive Expiry
+
+```python
+def check_and_remove_expired(self, key: str) -> bool:
+    """キーが期限切れかチェックし、期限切れなら削除する"""
+    # 有効期限を取得
+    expiry_time = self._store.get_expiry(key)
+
+    if expiry_time is None:
+        # 有効期限が設定されていない
+        return False
+
+    # 現在時刻と比較
+    current_time = int(time.time())
+
+    if current_time >= expiry_time:
+        # 期限切れ: キーを削除
+        self._store.delete(key)
+        return True
+
+    # 期限内
+    return False
+```
+
+#### 2. Active Expiry
+
+```python
+async def _active_expiry_loop(self) -> None:
+    """Active Expiryのメインループ"""
+    try:
+        while True:
+            # 1秒待機
+            await asyncio.sleep(1)
+
+            # サンプリングと削除を実行
+            await self._sample_and_remove_expired()
+
+    except asyncio.CancelledError:
+        # タスクがキャンセルされた
+        pass
+
+async def _sample_and_remove_expired(self) -> None:
+    """ランダムサンプリングして期限切れキーを削除"""
+    while True:
+        # 有効期限が設定されたキー一覧を取得
+        keys_with_expiry = self._store.get_keys_with_expiry()
+
+        if not keys_with_expiry:
+            break
+
+        # ランダムに最大20個サンプリング
+        sample_size = min(20, len(keys_with_expiry))
+        sample = random.sample(keys_with_expiry, sample_size)
+
+        # 期限切れキーを削除
+        expired_count = 0
+        for key in sample:
+            if self.check_and_remove_expired(key):
+                expired_count += 1
+
+        # 削除率を計算
+        deletion_rate = expired_count / len(sample)
+
+        # 削除率が25%以下なら終了
+        if deletion_rate <= 0.25:
+            break
+
+        # 削除率が25%超なら再実行
+```
+
+### よくある間違いと対処法
+
+**1. Active Expiryの削除率チェック忘れ**
+
+```python
+# ❌ 間違い: 1回サンプリングして終了
+async def _sample_and_remove_expired(self) -> None:
+    # ... サンプリングして削除 ...
+    # 削除率チェックなし
+
+# ✅ 正しい: 削除率が高い間は再実行
+async def _sample_and_remove_expired(self) -> None:
+    while True:
+        # サンプリングして削除
+        expired_count = ...
+        deletion_rate = expired_count / sample_size
+
+        if deletion_rate <= 0.25:
+            break  # 削除率が低いので終了
+        # 削除率が高いので即座に再実行
+```
+
+### テストで確認
+
+```bash
+# 有効期限管理のテスト
+pytest tests/test_expiry.py -v
+
+# Passive Expiryのテスト
+pytest tests/test_expiry.py::TestPassiveExpiry -v
+
+# Active Expiryのテスト
+pytest tests/test_expiry.py::TestActiveExpiry -v
+```
+
+### デバッグのヒント
+
+もし詰まった場合は：
+
+1. `logger.debug()`でサンプリング回数と削除数を記録
+2. Active Expiryのタイムアウトに注意（`asyncio.wait_for()`でタイムアウト設定）
+3. 完成版コード（`solutions/mini_redis/expiry.py`）と比較
+
 ## 動作確認
 
 ### 有効期限の動作確認
