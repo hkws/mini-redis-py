@@ -2,7 +2,7 @@
 
 ## 学習目標
 
-このセクションでは、コマンド実行部の役割と設計、6つの基本コマンドの仕様と実装（PING, GET, SET, INCR, EXPIRE, TTL）、エラーハンドリングのパターンとエラーメッセージの形式、Passive Expiryの統合方法、そしてredis-cliでの動作確認方法について学びます。
+このセクションでは、コマンド実行部の役割と設計、6つの基本コマンドの仕様と実装（PING, GET, SET, INCR, EXPIRE, TTL）、エラーハンドリングのパターンとエラーメッセージの形式について学びます。
 
 所要時間: 約20分（理論5分＋実装15分）
 
@@ -208,6 +208,9 @@ PONG
 "Hello, Redis!"
 ```
 
+[ドキュメント](https://redis.io/docs/latest/commands/ping/)
+
+
 ### 2. GETコマンド
 
 用途: キーの値を取得
@@ -252,6 +255,9 @@ OK
 (nil)
 ```
 
+[ドキュメント](https://redis.io/docs/latest/commands/get/)
+
+
 ### 3. SETコマンド
 
 用途: キーに値を設定
@@ -290,6 +296,9 @@ OK
 > GET name
 "Alice"
 ```
+
+[ドキュメント](https://redis.io/docs/latest/commands/set/)
+
 
 ### 4. INCRコマンド
 
@@ -359,6 +368,8 @@ OK
 (error) ERR value is not an integer or out of range
 ```
 
+[ドキュメント](https://redis.io/docs/latest/commands/incr/)
+
 ### 5. EXPIREコマンド
 
 用途: キーに有効期限（秒）を設定
@@ -419,6 +430,8 @@ OK
 > TTL mykey
 (integer) 59
 ```
+
+[ドキュメント](https://redis.io/docs/latest/commands/expire/)
 
 ### 6. TTLコマンド
 
@@ -485,6 +498,8 @@ OK
 > TTL nonexistent
 (integer) -2
 ```
+
+[ドキュメント](https://redis.io/docs/latest/commands/ttl/)
 
 ## エラーハンドリング
 
@@ -731,36 +746,6 @@ OK
 
 > INCR text
 (error) ERR value is not an integer or out of range
-```
-
-## テストの実行
-
-### コマンドのテスト
-
-```bash
-# 全コマンドのテスト
-pytest tests/test_commands.py -v
-
-# 特定のコマンドのみ
-pytest tests/test_commands.py::TestCommands::test_ping -v
-pytest tests/test_commands.py::TestCommands::test_get_set -v
-pytest tests/test_commands.py::TestCommands::test_incr -v
-```
-
-### デバッグのヒント
-
-```python
-# コマンド実行のログ
-async def execute(self, command: list[str]) -> str | int | None:
-    logger.info(f"Executing: {command}")
-
-    try:
-        result = await self._process(command)
-        logger.info(f"Result: {result}")
-        return result
-    except CommandError as e:
-        logger.error(f"Command error: {e}")
-        raise
 ```
 
 ## 次のステップ

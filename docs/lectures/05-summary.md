@@ -20,7 +20,7 @@ Mini-Redisワークショップを完走しました！　asyncio、ネットワ
 ### 2. asyncio TCPサーバ
 
 実装内容:
-`asyncio.start_server()`によるTCPサーバ構築、StreamReader/StreamWriterによるデータ送受信、複数クライアントの並行処理、そしてクリーンアップとgraceful shutdownを実装しました。
+`asyncio.start_server()`によるTCPサーバ構築、StreamReader/StreamWriterによるデータ送受信、複数クライアントの並行処理、そしてクリーンアップを実装しました。
 
 学んだ概念:
 イベントループとコルーチン、`async`/`await`構文、そして非同期I/Oの利点について学びました。

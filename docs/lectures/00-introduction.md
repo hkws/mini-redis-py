@@ -277,11 +277,3 @@ OK
 4. **有効期限管理** ([04-expiry.md](04-expiry.md)): Passive/Active Expiryの実装
 
 実装を始める前に、[アーキテクチャドキュメント](../architecture.md)で全体像を確認することをおすすめします。
-
-## 参考資料
-
-- [Redis公式サイト](https://redis.io/): Redisの概要とドキュメント
-- [RESP仕様](https://redis.io/docs/reference/protocol-spec/): RESPプロトコルの詳細仕様
-- [Redis Universityの無料コース](https://university.redis.com/): Redisの学習リソース
-- [Python asyncio公式ドキュメント](https://docs.python.org/3/library/asyncio.html): asyncioの公式ガイド
-
