@@ -2,7 +2,7 @@
 
 ## 学習目標
 
-このセクションでは、asyncioの基本概念（イベントループ、コルーチン、async/await）について学び、asyncioを使ったTCPサーバの構築方法を習得します。StreamReader/StreamWriterを使ったデータの送受信、接続管理とクリーンアップのベストプラクティス、そしてエラーハンドリングとgraceful shutdownの実装についても学びます。
+このセクションでは、asyncioの基本概念（イベントループ、コルーチン、async/await）について学び、asyncioを使ったTCPサーバの構築方法を習得します。StreamReader/StreamWriterを使ったデータの送受信、接続管理とクリーンアップについても学びます。
 
 所要時間: 約15分（理論5分＋実装10分）
 
@@ -17,7 +17,6 @@ Pythonの基本文法、関数と例外処理の理解、そして同期処理�
 同期処理（通常のPythonコード）では、Sequentialに処理が実行されます。各処理が完了するまで次に進みません。
 
 ```python
-# 同期処理
 def fetch_user(user_id):
     time.sleep(1)  # データベース読み取り（1秒）
     return f"User {user_id}"
@@ -30,7 +29,6 @@ result2 = fetch_user(2)  # さらに1秒待つ
 非同期処理（asyncio）では、待ち時間中に他の処理を実行できます：
 
 ```python
-# ✅ 非同期処理: 待ち時間中に他の処理を実行
 async def fetch_user(user_id):
     await asyncio.sleep(1)  # 待つ間、他の処理を実行可能
     return f"User {user_id}"
@@ -144,7 +142,7 @@ if __name__ == "__main__":
 
 ## asyncioによるTCPサーバの構築
 
-asyncioでは、[start_server](https://docs.python.org/ja/3.12/library/asyncio-stream.html#asyncio.start_server)というトップレベルの関数により、簡単にサーバーを作成することができます。
+asyncioでは、[start_server](https://docs.python.org/ja/3.12/library/asyncio-stream.html#asyncio.start_server)という関数により、簡単にサーバーを作成することができます。
 
 ```python
 import asyncio
@@ -182,7 +180,7 @@ asyncio.run(main())
 
 ### StreamReaderでデータを読む
 
-StreamReaderは、非同期にバイトデータを読み取るためのクラスです。
+[StreamReader](https://docs.python.org/ja/3/library/asyncio-stream.html#streamreader)は、非同期にバイトデータを読み取るためのクラスです。
 
 主なメソッド：
 
@@ -220,16 +218,20 @@ except asyncio.LimitOverrunError:
     print("Buffer overflow")
 ```
 
+!!! info
+    asyncioにおける例外については、以下の公式ドキュメントを参照してください。
+    https://docs.python.org/ja/3.12/library/asyncio-exceptions.html
+
 ### StreamWriterでデータを送る
 
-StreamWriterは、非同期にバイトデータを書き込むためのクラスです。
+[StreamWriter](https://docs.python.org/ja/3/library/asyncio-stream.html#streamwriter)は、非同期にバイトデータを書き込むためのクラスです。
 
 主なメソッド：
 
 | メソッド | 説明 |
 |---------|------|
-| `write(data)` | データを書き込みバッファに追加（即座に送信されない） |
-| `await drain()` | バッファの内容を実際に送信し、完了を待つ |
+| `write(data)` | 背後にあるソケットにデータを即座に書き込む。書き込みに失敗した場合、データは送信可能になるまで内部の書き込みバッファーに格納される |
+| `await drain()` | ストリームへの書き込み再開に適切な状態になるまで待つ |
 | `close()` | 接続を閉じる |
 | `await wait_closed()` | 接続が完全に閉じるのを待つ |
 
@@ -247,14 +249,14 @@ async def handle_client(reader, writer):
     await writer.wait_closed()
 ```
 
-`write()`だけではクライアントに送信されないことに注意しましょう。`await drain()`で実際に送信する必要があります。
+`write()`は`drain()`と組み合わせて使うようにしてください。
 
 
 ## クライアント処理ループの実装
 
 ### 基本的なパターン
 
-クライアントとの通信は、通常、以下のループで処理します：
+クライアントとの通信は、通常、以下のループで処理します
 
 ```python
 async def handle_client(reader: StreamReader, writer: StreamWriter) -> None:
@@ -280,7 +282,7 @@ async def handle_client(reader: StreamReader, writer: StreamWriter) -> None:
         print("Client disconnected")
 
     finally:
-        # クリーンアップ: 必ず接続を閉じる
+        # クリーンアップ
         writer.close()
         await writer.wait_closed()
 ```
@@ -338,10 +340,9 @@ async def handle_client(reader: StreamReader, writer: StreamWriter) -> None:
 
 ## デバッグのヒント
 
-### asyncioデバッグモード
+### asyncioのデバッグモード有効化
 
 ```python
-# デバッグモードを有効化
 asyncio.run(main(), debug=True)
 ```
 
@@ -386,9 +387,9 @@ async def handle_client(reader, writer):
 
 **重要**: `TCPServer.start()`と`stop()`は実装済みです。`ClientHandler.handle()`のみ実装してください。
 
-### 実装のポイント
+### 実装例
 
-`ClientHandler.handle()`は以下の構造で実装します：
+例えば、以下のような実装があり得るでしょう。
 
 ```python
 async def handle(self) -> None:
@@ -455,15 +456,9 @@ python -m mini_redis
 telnet localhost 6379
 ```
 
-この段階では、まだRESPプロトコルのパーサやコマンド実行が未実装なので、エラーが返ってくるはずです。これは正常です。
+この段階では、まだRESPプロトコルのパーサやコマンド実行が未実装なので、何を送ってもエラーが返ってくるはずです。これは正常です。
 
-### デバッグのヒント
-
-もし詰まった場合は：
-
-1. `logger.debug()`でログを追加して、どこまで処理が進んでいるか確認
-2. `asyncio.run(main(), debug=True)`でデバッグモードを有効化
-3. 完成版コード（`solutions/mini_redis/server.py`）と比較
+もし詰まった場合は、完成版コード（`solutions/mini_redis/server.py`）も参考にしてください。
 
 ## 次のステップ
 

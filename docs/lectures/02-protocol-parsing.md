@@ -63,7 +63,7 @@ b'+OK\r\n'
 -WRONGTYPE Operation against a key holding the wrong kind of value\r\n
 ```
 
-ErrorsはSimple Stringsと同じ形式ですが、先頭が`-`になっており、クライアントはこれをエラーとして扱います。'-'の直後の最初の大文字の単語（`ERR` や `WRONGTYPE`など）は、返却されるエラーの種類を表しており、error prefixと呼ばれます。
+ErrorsはSimple Stringsと同じ形式ですが、先頭が`-`になっており、クライアントはこれをエラーとして扱います。'-'の直後の最初の大文字の単語（`ERR` や `WRONGTYPE`など）は、返却されるエラーの種類を表しており、Error Prefixと呼ばれます。
 
 Pythonでの表現:
 
@@ -82,7 +82,7 @@ raise CommandError("ERR unknown command 'asdf'")
 !!! note
     `:` の直後は `+` または `-` を取ることができます。どちらもなければ `+` として扱われます。
 
-用途: 数値の応答（INCR、TTL、EXPIREなど）としての使用。コマンドの種別に応じて意味が異なる。
+用途: 数値の応答（INCR、TTL、EXPIREなど）としての使用。その際の応答の意味はコマンドの種別による。
 
 例:
 
@@ -223,7 +223,7 @@ b'*-1\r\n'  # → None
 *2\r\n$3\r\nGET\r\n$5\r\nmykey\r\n
 ```
 
-**ステップ1**: 最初の行を読む
+**ステップ1**: 最初の行（\r\nまで）を読む
 
 ```python
 line = await reader.readuntil(b'\r\n')  # b'*2\r\n'
@@ -448,19 +448,6 @@ encode_response(42)        # → b':42\r\n'
 encode_response(None)      # → b'$-1\r\n'
 ```
 
-## よくある落とし穴と回避方法
-
-以下の点に注意してRESPプロトコルの実装を行う必要があります：
-
-1. **CRLF削除忘れ**: `readuntil(b'\r\n')`で読んだ行には末尾に`\r\n`が含まれているため、`line[:-2]`で削除してから処理する必要があります。削除しないと`int()`変換などでエラーが発生します。
-
-2. **バイト長と文字数の混同**: Bulk Stringの長さは文字数ではなくバイト数で指定します。特にマルチバイト文字（日本語など）を扱う場合、`len(text)`ではなく`len(text.encode('utf-8'))`を使用する必要があります。
-
-3. **readexactly()の使い忘れ**: 指定バイト数のデータを読む際は、`read()`ではなく`readexactly()`を使用します。`read()`は指定バイト数未満のデータを返す可能性がありますが、`readexactly()`は正確に指定バイト数が揃うまで待機し、データが不足する場合は`IncompleteReadError`を発生させます。
-
-4. **UTF-8デコードエラー**: バイト列を文字列にデコードする際は、不正なUTF-8データによる`UnicodeDecodeError`に備えて、try-except文でエラーハンドリングを行う必要があります。
-
-5. **Null値の処理忘れ**: Bulk Stringの長さが`-1`の場合はNull値を表します。データ読み取り前に長さをチェックし、`-1`の場合は特別に処理する必要があります。そうしないと`readexactly()`に負の値が渡されてエラーになります。
 
 ## 実装ガイド（ハンズオン）
 
@@ -492,41 +479,6 @@ encode_response(None)      # → b'$-1\r\n'
 1. **バイト長と文字数の違い**: `len(text.encode('utf-8'))`でバイト数を取得（文字数ではない）
 2. **Null値の表現**: `$-1\r\n`で表す
 
-### よくある間違いと対処法
-
-#### 1. CRLF削除忘れ
-
-```python
-# ❌ 間違い
-line = await reader.readuntil(b"\r\n")
-# \r\nが含まれたまま
-
-# ✅ 正しい
-line = await reader.readuntil(b"\r\n")
-line = line[:-2]  # \r\nを削除
-```
-
-#### 2. Bulk Stringの長さ計算ミス
-
-```python
-# ❌ 間違い
-length = len(value)  # 文字数
-
-# ✅ 正しい
-value_bytes = value.encode('utf-8')
-length = len(value_bytes)  # バイト数
-```
-
-#### 3. readexactly()の使い忘れ
-
-```python
-# ❌ 間違い
-data = await reader.read(length)  # 指定バイト数未満の可能性
-
-# ✅ 正しい
-data = await reader.readexactly(length + 2)  # データ + \r\n
-```
-
 ### テストで確認
 
 ```bash
@@ -536,21 +488,6 @@ pytest tests/test_protocol.py -v
 # 特定のテストクラスのみ
 pytest tests/test_protocol.py::TestRESPParser -v
 ```
-
-### デバッグのヒント
-
-バイト列を確認するときは、`repr()`を使う：
-
-```python
-print(f"Received: {line!r}")
-# 出力例: Received: b'*2\r\n'
-```
-
-もし詰まった場合は：
-
-1. `WORKSHOP_GUIDE.md`の「よくある間違い」セクションを確認
-2. テストコードで期待される動作を確認
-3. 完成版コード（`solutions/mini_redis/protocol.py`）と比較
 
 ## 次のステップ
 
