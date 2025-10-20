@@ -18,8 +18,8 @@ import logging
 from asyncio import StreamReader, StreamWriter
 from typing import TYPE_CHECKING
 
-from mini_redis.commands import CommandHandler
-from mini_redis.protocol import RESPParser
+from mini_redis.commands import CommandHandler, CommandError
+from mini_redis.protocol import RESPParser, RESPProtocolError
 
 if TYPE_CHECKING:
     from mini_redis.expiry import ExpiryManager
@@ -155,120 +155,28 @@ class ClientHandler:
         self._handler = handler
 
     async def handle(self, reader: StreamReader, writer: StreamWriter) -> None:
-        """クライアント接続を処理するメインループ.
+        """クライアント接続を処理するメインループ（エコーサーバー版）.
 
         Args:
             reader: asyncioのStreamReader
             writer: asyncioのStreamWriter
 
-        【実装ステップ】
-        ステップ1: クライアント情報を取得してログ出力
-        ──────────────────────────────────────
-        1. writer.get_extra_info("peername")でクライアントのアドレスを取得
-        2. logger.info(f"Client connected: {addr}")でログ出力
+        実装のポイント:
+        - try-finally構造で確実にクリーンアップ
+        - 無限ループでデータを処理（読み取り→エコーバック）
+        - 適切なエラーハンドリング
 
-        ステップ2: try-finally-whileループの構造を作成
-        ────────────────────────────────────────
-        1. tryブロックを作成
-        2. finallyブロックでwriter.close()とwriter.wait_closed()を呼び出す
-        3. tryブロック内にwhile True:無限ループを作成
+        詳細な実装ステップは docs/lectures/01-tcp-server.md を参照してください。
 
-        ステップ3: コマンドの読み取りとパース
-        ───────────────────────────────
-        1. tryブロック内でself._parser.parse_command(reader)を呼び出す
-        2. 結果をcommand変数に格納
-
-        ステップ4: コマンドの実行
-        ─────────────────────
-        1. self._handler.execute(command)を呼び出す
-        2. 結果をresult変数に格納
-
-        ステップ5: 結果の型判定とエンコード
-        ───────────────────────────
-        1. isinstance(result, str)の場合:
-           - self._parser.encode_simple_string(result)
-        2. isinstance(result, int)の場合:
-           - self._parser.encode_integer(result)
-        3. それ以外（result is None）の場合:
-           - self._parser.encode_bulk_string(None)
-        4. エンコード結果をresponse変数に格納
-
-        ステップ6: 応答の送信
-        ─────────────────
-        1. writer.write(response)で応答を送信
-        2. await writer.drain()で送信完了を待つ
-
-        ステップ7: エラーハンドリング
-        ─────────────────────
-        1. CommandError例外をキャッチ:
-           - str(e)でエラーメッセージを取得
-           - self._parser.encode_error(error_msg)でエンコード
-           - writer.write()とawait writer.drain()で送信
-           - ループを継続
-
-        2. RESPProtocolError例外をキャッチ:
-           - logger.error()でログ出力
-           - breakでループを抜ける
-
-        3. asyncio.IncompleteReadError例外をキャッチ:
-           - logger.info()でログ出力（クライアント切断）
-           - breakでループを抜ける
-
-        4. asyncio.CancelledError例外をキャッチ:
-           - logger.info()でログ出力（サーバシャットダウン）
-           - raiseで例外を再送出
-
-        5. Exception例外をキャッチ（予期しないエラー）:
-           - logger.error()でログ出力
-           - breakでループを抜ける
-
-        【重要な概念】
-        - 無限ループでコマンドを処理し続ける
-        - 各コマンドの実行は独立している
-        - エラーが発生してもサーバは継続（接続は切断）
-        - finally句で必ずクリーンアップ
-
-        【よくある間違い】
-        ❌ writer.drain()を忘れる → データが送信されない
-        ❌ finally句を忘れる → 接続がクローズされない
-        ❌ CancelledErrorをraiseし忘れる → グレースフルシャットダウンが動作しない
-
-        【ヒント】
-        from mini_redis.commands import CommandError
-        from mini_redis.protocol import RESPProtocolError
-        をメソッド内でimportすると、循環importを避けられます。
-
-        例:
-        >>> # クライアントが接続
-        >>> # ループ開始
-        >>> # コマンド受信: ["PING"]
-        >>> # 実行結果: "PONG"
-        >>> # エンコード: b'+PONG\\r\\n'
-        >>> # 送信完了
-        >>> # 次のコマンドを待つ
+        TODO: 次のセクションで以下を実装
+        - コマンドのパース (self._parser.parse_command())
+        - コマンドの実行 (self._handler.execute())
+        - 結果の型判定とエンコード (encode_simple_string/encode_integer/encode_bulk_string)
         """
-        # TODO: ステップ1を実装してください
-        # addr = writer.get_extra_info("peername")
-        # logger.info(f"Client connected: {addr}")
-
-        # TODO: ステップ2を実装してください
-        # try:
-        #     while True:
-        #         try:
-        #             # ステップ3-6をここに実装
-        #         except CommandError as e:
-        #             # ステップ7-1を実装
-        #         except RESPProtocolError as e:
-        #             # ステップ7-2を実装
-        #         except asyncio.IncompleteReadError:
-        #             # ステップ7-3を実装
-        #         except asyncio.CancelledError:
-        #             # ステップ7-4を実装
-        #         except Exception as e:
-        #             # ステップ7-5を実装
-        # finally:
-        #     writer.close()
-        #     await writer.wait_closed()
-        #     logger.info(f"Connection closed: {addr}")
-
-        raise NotImplementedError("handle()を実装してください")
+        # TODO: ここに実装を追加してください
+        # ステップ1: クライアント情報を取得してログ出力
+        # ステップ2: try-finally-whileループの構造を作成
+        # ステップ3: データの読み取り
+        # ステップ4: データをそのままエコーバック
+        # ステップ5: エラーハンドリング
+        pass

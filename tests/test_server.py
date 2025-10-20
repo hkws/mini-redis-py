@@ -1,7 +1,11 @@
-"""Tests for ClientHandler.
+"""Tests for ClientHandler (Echo Server version).
 
 ClientHandler.handle()メソッドに焦点を当てたテストスイート。
+このバージョンでは、エコーサーバーとしての基本動作のみをテストします。
 TCPServerは実装済みのため、テスト対象外。
+
+コマンドのパース・実行・エンコードは次のセクションで実装するため、
+このテストでは受信データがそのまま返されることを確認します。
 """
 
 import asyncio
@@ -61,12 +65,12 @@ def create_mock_streams() -> tuple[asyncio.StreamReader, asyncio.StreamWriter, M
     return reader, writer, transport
 
 
-class TestClientHandler:
-    """ClientHandler.handle()メソッドのテスト."""
+class TestClientHandlerEchoServer:
+    """ClientHandler.handle()メソッドのテスト（エコーサーバー版）."""
 
     @pytest.mark.asyncio
-    async def test_handle_ping_command(self) -> None:
-        """PINGコマンドを正しく処理する."""
+    async def test_echo_single_line(self) -> None:
+        """1行のデータが正しくエコーバックされることを確認."""
         # モックのストリームを作成
         reader, writer, transport = create_mock_streams()
 
@@ -77,21 +81,21 @@ class TestClientHandler:
         handler = CommandHandler(store, expiry)
         client_handler = ClientHandler(parser, handler)
 
-        # PINGコマンドをRESP形式で送信
-        ping_command = b"*1\r\n$4\r\nPING\r\n"
-        reader.feed_data(ping_command)
+        # 1行のデータを送信
+        data = b"*1\r\n$4\r\nPING\r\n"
+        reader.feed_data(data)
         reader.feed_eof()
 
         # ハンドラを実行（EOFで終了）
         await client_handler.handle(reader, writer)
 
-        # 応答を検証
+        # 応答を検証（同じデータがエコーバックされる）
         response = bytes(transport.buffer)
-        assert response == b"+PONG\r\n"
+        assert response == data
 
     @pytest.mark.asyncio
-    async def test_handle_multiple_commands(self) -> None:
-        """複数のコマンドを順次処理する."""
+    async def test_echo_multiple_lines(self) -> None:
+        """複数行のデータが順次エコーバックされることを確認."""
         reader, writer, transport = create_mock_streams()
 
         parser = RESPParser()
@@ -100,25 +104,26 @@ class TestClientHandler:
         handler = CommandHandler(store, expiry)
         client_handler = ClientHandler(parser, handler)
 
-        # 複数のコマンドを送信（PING、SET、GET）
-        commands = (
-            b"*1\r\n$4\r\nPING\r\n"
-            b"*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n"
-            b"*2\r\n$3\r\nGET\r\n$3\r\nfoo\r\n"
-        )
-        reader.feed_data(commands)
+        # 複数行のデータを送信
+        line1 = b"*1\r\n$4\r\nPING\r\n"
+        line2 = b"*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n"
+        line3 = b"*2\r\n$3\r\nGET\r\n$3\r\nfoo\r\n"
+
+        reader.feed_data(line1)
+        reader.feed_data(line2)
+        reader.feed_data(line3)
         reader.feed_eof()
 
         # ハンドラを実行
         await client_handler.handle(reader, writer)
 
-        # 応答を検証（PONG + OK + bar）
+        # 応答を検証（すべてのデータがエコーバックされる）
         response = bytes(transport.buffer)
-        assert response == b"+PONG\r\n+OK\r\n$3\r\nbar\r\n"
+        assert response == line1 + line2 + line3
 
     @pytest.mark.asyncio
-    async def test_handle_set_get_commands(self) -> None:
-        """SET/GETコマンドの基本動作を確認."""
+    async def test_echo_simple_string(self) -> None:
+        """シンプルな文字列がエコーバックされることを確認."""
         reader, writer, transport = create_mock_streams()
 
         parser = RESPParser()
@@ -127,23 +132,20 @@ class TestClientHandler:
         handler = CommandHandler(store, expiry)
         client_handler = ClientHandler(parser, handler)
 
-        # SET key value → GET key
-        commands = (
-            b"*3\r\n$3\r\nSET\r\n$4\r\nname\r\n$5\r\nAlice\r\n"
-            b"*2\r\n$3\r\nGET\r\n$4\r\nname\r\n"
-        )
-        reader.feed_data(commands)
+        # RESP Simple String形式のデータ
+        data = b"+OK\r\n"
+        reader.feed_data(data)
         reader.feed_eof()
 
         await client_handler.handle(reader, writer)
 
-        # 応答を検証（OK + Alice）
+        # 応答を検証
         response = bytes(transport.buffer)
-        assert response == b"+OK\r\n$5\r\nAlice\r\n"
+        assert response == data
 
     @pytest.mark.asyncio
-    async def test_handle_get_nonexistent_key(self) -> None:
-        """存在しないキーのGETでnullが返ることを確認."""
+    async def test_echo_bulk_string(self) -> None:
+        """Bulk String形式のデータがエコーバックされることを確認."""
         reader, writer, transport = create_mock_streams()
 
         parser = RESPParser()
@@ -152,136 +154,17 @@ class TestClientHandler:
         handler = CommandHandler(store, expiry)
         client_handler = ClientHandler(parser, handler)
 
-        # 存在しないキーをGET
-        command = b"*2\r\n$3\r\nGET\r\n$7\r\nmissing\r\n"
-        reader.feed_data(command)
+        # RESP Bulk String形式のデータ（ただし\r\nで終わる1行のみ）
+        data = b"$5\r\nhello\r\n"
+        reader.feed_data(data)
         reader.feed_eof()
 
         await client_handler.handle(reader, writer)
 
-        # 応答を検証（null bulk string）
+        # 応答を検証
         response = bytes(transport.buffer)
-        assert response == b"$-1\r\n"
-
-    @pytest.mark.asyncio
-    async def test_handle_del_command(self) -> None:
-        """DELコマンドで削除された数が返ることを確認."""
-        reader, writer, transport = create_mock_streams()
-
-        parser = RESPParser()
-        store = DataStore()
-        expiry = ExpiryManager(store)
-        handler = CommandHandler(store, expiry)
-        client_handler = ClientHandler(parser, handler)
-
-        # SET key value → DEL key
-        commands = (
-            b"*3\r\n$3\r\nSET\r\n$3\r\nkey\r\n$3\r\nval\r\n"
-            b"*2\r\n$3\r\nDEL\r\n$3\r\nkey\r\n"
-        )
-        reader.feed_data(commands)
-        reader.feed_eof()
-
-        await client_handler.handle(reader, writer)
-
-        # 応答を検証（OK + 1）
-        response = bytes(transport.buffer)
-        assert response == b"+OK\r\n:1\r\n"
-
-    @pytest.mark.asyncio
-    async def test_handle_incr_command(self) -> None:
-        """INCRコマンドで整数値がインクリメントされることを確認."""
-        reader, writer, transport = create_mock_streams()
-
-        parser = RESPParser()
-        store = DataStore()
-        expiry = ExpiryManager(store)
-        handler = CommandHandler(store, expiry)
-        client_handler = ClientHandler(parser, handler)
-
-        # SET counter 10 → INCR counter
-        commands = (
-            b"*3\r\n$3\r\nSET\r\n$7\r\ncounter\r\n$2\r\n10\r\n"
-            b"*2\r\n$4\r\nINCR\r\n$7\r\ncounter\r\n"
-        )
-        reader.feed_data(commands)
-        reader.feed_eof()
-
-        await client_handler.handle(reader, writer)
-
-        # 応答を検証（OK + 11）
-        response = bytes(transport.buffer)
-        assert response == b"+OK\r\n:11\r\n"
-
-    @pytest.mark.asyncio
-    async def test_handle_unknown_command_error(self) -> None:
-        """不正なコマンドを送信してエラーが返ることを確認."""
-        reader, writer, transport = create_mock_streams()
-
-        parser = RESPParser()
-        store = DataStore()
-        expiry = ExpiryManager(store)
-        handler = CommandHandler(store, expiry)
-        client_handler = ClientHandler(parser, handler)
-
-        # 存在しないコマンド
-        invalid_command = b"*1\r\n$7\r\nINVALID\r\n"
-        reader.feed_data(invalid_command)
-        reader.feed_eof()
-
-        await client_handler.handle(reader, writer)
-
-        # エラーレスポンスを検証
-        response = bytes(transport.buffer)
-        assert response.startswith(b"-ERR")
-
-    @pytest.mark.asyncio
-    async def test_handle_incr_non_integer_error(self) -> None:
-        """INCRコマンドで非整数値を持つキーを操作してエラーが返ることを確認."""
-        reader, writer, transport = create_mock_streams()
-
-        parser = RESPParser()
-        store = DataStore()
-        expiry = ExpiryManager(store)
-        handler = CommandHandler(store, expiry)
-        client_handler = ClientHandler(parser, handler)
-
-        # キーに文字列をセット→INCRで操作
-        commands = (
-            b"*3\r\n$3\r\nSET\r\n$3\r\nkey\r\n$5\r\nhello\r\n"  # SET key hello
-            b"*2\r\n$4\r\nINCR\r\n$3\r\nkey\r\n"  # INCR key
-        )
-        reader.feed_data(commands)
-        reader.feed_eof()
-
-        await client_handler.handle(reader, writer)
-
-        # 応答を検証（OK + エラー）
-        response = bytes(transport.buffer)
-        assert b"+OK\r\n" in response
-        assert b"-ERR" in response
-
-    @pytest.mark.asyncio
-    async def test_handle_wrong_number_of_args_error(self) -> None:
-        """引数の数が間違っているコマンドでエラーが返ることを確認."""
-        reader, writer, transport = create_mock_streams()
-
-        parser = RESPParser()
-        store = DataStore()
-        expiry = ExpiryManager(store)
-        handler = CommandHandler(store, expiry)
-        client_handler = ClientHandler(parser, handler)
-
-        # SETコマンドに引数が足りない（keyのみでvalueなし）
-        command = b"*2\r\n$3\r\nSET\r\n$3\r\nkey\r\n"
-        reader.feed_data(command)
-        reader.feed_eof()
-
-        await client_handler.handle(reader, writer)
-
-        # エラーレスポンスを検証
-        response = bytes(transport.buffer)
-        assert b"-ERR" in response
+        # エコーサーバーなので、最初の行（$5\r\n）のみがエコーバックされる
+        assert response == b"$5\r\n"
 
     @pytest.mark.asyncio
     async def test_handle_client_immediate_disconnect(self) -> None:
@@ -304,8 +187,8 @@ class TestClientHandler:
         assert transport.is_closing()
 
     @pytest.mark.asyncio
-    async def test_handle_partial_command_then_disconnect(self) -> None:
-        """不完全なコマンドを受信後に切断した場合の処理を確認."""
+    async def test_handle_partial_line_then_disconnect(self) -> None:
+        """不完全な行を受信後に切断した場合の処理を確認."""
         reader, writer, transport = create_mock_streams()
 
         parser = RESPParser()
@@ -314,9 +197,9 @@ class TestClientHandler:
         handler = CommandHandler(store, expiry)
         client_handler = ClientHandler(parser, handler)
 
-        # 不完全なコマンド（配列のサイズのみ）
-        partial_command = b"*3\r\n$3\r\nSET\r\n"
-        reader.feed_data(partial_command)
+        # 不完全な行（\r\nで終わっていない）
+        partial_data = b"*3\r\n$3\r\nSET\r\n"
+        reader.feed_data(partial_data)
         reader.feed_eof()  # 途中でEOF
 
         # ハンドラを実行（エラーログが出るが、正常終了するべき）
@@ -326,8 +209,8 @@ class TestClientHandler:
         assert transport.is_closing()
 
     @pytest.mark.asyncio
-    async def test_handle_exists_command(self) -> None:
-        """EXISTSコマンドが正しく動作することを確認."""
+    async def test_echo_integer(self) -> None:
+        """RESP Integer形式のデータがエコーバックされることを確認."""
         reader, writer, transport = create_mock_streams()
 
         parser = RESPParser()
@@ -336,17 +219,57 @@ class TestClientHandler:
         handler = CommandHandler(store, expiry)
         client_handler = ClientHandler(parser, handler)
 
-        # SET key → EXISTS key → EXISTS missing
-        commands = (
-            b"*3\r\n$3\r\nSET\r\n$3\r\nkey\r\n$3\r\nval\r\n"
-            b"*2\r\n$6\r\nEXISTS\r\n$3\r\nkey\r\n"
-            b"*2\r\n$6\r\nEXISTS\r\n$7\r\nmissing\r\n"
-        )
-        reader.feed_data(commands)
+        # RESP Integer形式のデータ
+        data = b":1000\r\n"
+        reader.feed_data(data)
         reader.feed_eof()
 
         await client_handler.handle(reader, writer)
 
-        # 応答を検証（OK + 1 + 0）
+        # 応答を検証
         response = bytes(transport.buffer)
-        assert response == b"+OK\r\n:1\r\n:0\r\n"
+        assert response == data
+
+    @pytest.mark.asyncio
+    async def test_echo_error(self) -> None:
+        """RESP Error形式のデータがエコーバックされることを確認."""
+        reader, writer, transport = create_mock_streams()
+
+        parser = RESPParser()
+        store = DataStore()
+        expiry = ExpiryManager(store)
+        handler = CommandHandler(store, expiry)
+        client_handler = ClientHandler(parser, handler)
+
+        # RESP Error形式のデータ
+        data = b"-ERR unknown command\r\n"
+        reader.feed_data(data)
+        reader.feed_eof()
+
+        await client_handler.handle(reader, writer)
+
+        # 応答を検証
+        response = bytes(transport.buffer)
+        assert response == data
+
+    @pytest.mark.asyncio
+    async def test_echo_array_header(self) -> None:
+        """RESP Array形式のヘッダーがエコーバックされることを確認."""
+        reader, writer, transport = create_mock_streams()
+
+        parser = RESPParser()
+        store = DataStore()
+        expiry = ExpiryManager(store)
+        handler = CommandHandler(store, expiry)
+        client_handler = ClientHandler(parser, handler)
+
+        # RESP Array形式のヘッダー
+        data = b"*2\r\n"
+        reader.feed_data(data)
+        reader.feed_eof()
+
+        await client_handler.handle(reader, writer)
+
+        # 応答を検証
+        response = bytes(transport.buffer)
+        assert response == data

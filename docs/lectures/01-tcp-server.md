@@ -374,16 +374,20 @@ async def handle_client(reader, writer):
 
 ## 実装ガイド（ハンズオン）
 
-ここまで学んだ内容を活かして、TCPサーバーを実装していきましょう！（目安時間: 15分）
+ここまで学んだ内容を活かして、シンプルなエコーサーバーを実装していきましょう！（目安時間: 10分）
+
+### 実装のゴール
+
+このセクションでは、**受信したデータをそのまま返すエコーサーバー**を実装します。コマンドのパース、実行、応答のエンコードは次のセクション以降で実装するため、このステップではTODOコメントとして残しておきます。
 
 ### 実装する内容
 
 1. `mini_redis/__main__.py`と`mini_redis/server.py`を開き、実装済みの内容を確認
-2. `mini_redis/protocol.py`のRESPParserがどのようなメソッドを持つか確認（のちのステップにて実装するため、docstringを参考にしてください）
 2. `ClientHandler.handle()` メソッドを実装
-   - コマンドの読み取り→パース→実行→応答のループ
-   - 結果の型判定（str/int/None）とエンコード
-   - エラーハンドリング（CommandError、RESPProtocolError等）
+   - クライアント情報の取得とログ出力
+   - データの読み取り（`readuntil(b'\r\n')`でRESP形式の行を読む）
+   - **受信したデータをそのままエコーバック**
+   - エラーハンドリング（`IncompleteReadError`、`CancelledError`等）
    - `finally`句でクリーンアップ
 
 なお、`TCPServer.start()`と`stop()`は実装済みです。
@@ -398,107 +402,92 @@ async def handle_client(reader, writer):
 #### ステップ2: try-finally-whileループの構造を作成
 
 1. `try`ブロックを作成
-2. `finally`ブロックで`writer.close()`と`writer.wait_closed()`を呼び出す
+2. `finally`ブロックで`writer.close()`と`await writer.wait_closed()`を呼び出す
 3. `try`ブロック内に`while True:`無限ループを作成
 
-#### ステップ3: コマンドの読み取りとパース
+#### ステップ3: データの読み取り
 
-1. `try`ブロック内で`self._parser.parse_command(reader)`を呼び出す
-2. 結果を`command`変数に格納
+1. 内側の`try`ブロック内で`await reader.readuntil(b'\r\n')`を呼び出す
+2. 結果を`data`変数に格納
+3. `logger.debug(f"Received: {data}")`でログ出力
 
-#### ステップ4: コマンドの実行
+#### ステップ4: データをそのままエコーバック
 
-1. `self._handler.execute(command)`を呼び出す
-2. 結果を`result`変数に格納
-
-#### ステップ5: 結果の型判定とエンコード
-
-1. `isinstance(result, str)`の場合:
-   - `self._parser.encode_simple_string(result)`
-2. `isinstance(result, int)`の場合:
-   - `self._parser.encode_integer(result)`
-3. それ以外（`result is None`）の場合:
-   - `self._parser.encode_bulk_string(None)`
-4. エンコード結果を`response`変数に格納
-
-#### ステップ6: 応答の送信
-
-1. `writer.write(response)`で応答を送信
+1. `writer.write(data)`でデータをそのまま送信
 2. `await writer.drain()`で送信完了を待つ
 
-#### ステップ7: エラーハンドリング
+#### ステップ5: エラーハンドリング
 
-1. **CommandError例外をキャッチ**:
-   - `str(e)`でエラーメッセージを取得
-   - `self._parser.encode_error(error_msg)`でエンコード
-   - `writer.write()`と`await writer.drain()`で送信
-   - ループを継続
-
-2. **RESPProtocolError例外をキャッチ**:
-   - `logger.error()`でログ出力
+1. **asyncio.IncompleteReadError例外をキャッチ**:
+   - `logger.info("Client disconnected")`でログ出力
    - `break`でループを抜ける
 
-3. **asyncio.IncompleteReadError例外をキャッチ**:
-   - `logger.info()`でログ出力（クライアント切断）
+2. **asyncio.CancelledError例外をキャッチ**:
+   - `logger.info("Server shutting down")`でログ出力
+   - `raise`で例外を再送出（main関数内でcatchし、TCPServer.stop()を実行する）
+
+3. **Exception例外をキャッチ（予期しないエラー）**:
+   - `logger.error(f"Unexpected error: {e}", exc_info=True)`でログ出力
    - `break`でループを抜ける
 
-4. **asyncio.CancelledError例外をキャッチ**:
-   - `logger.info()`でログ出力（サーバシャットダウン）
-   - `raise`で例外を再送出 -> main関数内でcatchし、TCPServer.stop()を実行する
+#### ステップ6: TODO コメントを追加
 
-5. **Exception例外をキャッチ（予期しないエラー）**:
-   - `logger.error()`でログ出力
-   - `break`でループを抜ける
+将来の実装のために、以下のTODOコメントを追加してください：
+
+```python
+# TODO: 次のセクションで実装
+# 1. コマンドのパース (self._parser.parse_command())
+# 2. コマンドの実行 (self._handler.execute())
+# 3. 結果の型判定とエンコード (encode_simple_string/encode_integer/encode_bulk_string)
+```
 
 ### 実装例
 
 例えば、以下のような実装があり得るでしょう。
 
 ```python
-async def handle(self) -> None:
-    """クライアント接続を処理する"""
+async def handle(self, reader: StreamReader, writer: StreamWriter) -> None:
+    """クライアント接続を処理する（エコーサーバー）"""
+    # クライアント情報を取得
+    addr = writer.get_extra_info("peername")
+    logger.info(f"Client connected: {addr}")
+
     try:
         while True:
-            # 1. コマンドをパース
-            command = await self._parser.parse_command(self._reader)
+            try:
+                # データを読み取る（\r\nまで）
+                data = await reader.readuntil(b'\r\n')
+                logger.debug(f"Received: {data}")
 
-            # 2. コマンドを実行
-            result = await self._commands.execute(command)
+                # TODO: 次のセクションで実装
+                # 1. コマンドのパース (self._parser.parse_command())
+                # 2. コマンドの実行 (self._handler.execute())
+                # 3. 結果の型判定とエンコード (encode_simple_string/encode_integer/encode_bulk_string)
 
-            # 3. 結果の型に応じてエンコード
-            if isinstance(result, str):
-                response = encode_bulk_string(result)
-            elif isinstance(result, int):
-                response = encode_integer(result)
-            elif result is None:
-                response = encode_bulk_string(None)
-            else:
-                response = encode_error("ERR unknown response type")
+                # データをそのままエコーバック
+                writer.write(data)
+                await writer.drain()
 
-            # 4. 応答を送信
-            self._writer.write(response)
-            await self._writer.drain()
+            except asyncio.IncompleteReadError:
+                # クライアントが切断
+                logger.info("Client disconnected")
+                break
 
-    except asyncio.IncompleteReadError:
-        # クライアントが切断
-        pass
-    except RESPProtocolError as e:
-        # プロトコルエラー
-        error_response = encode_error(str(e))
-        self._writer.write(error_response)
-        await self._writer.drain()
-    except CommandError as e:
-        # コマンドエラー
-        error_response = encode_error(str(e))
-        self._writer.write(error_response)
-        await self._writer.drain()
-    except Exception as e:
-        # 予期しないエラー
-        logger.exception("Unexpected error")
+            except asyncio.CancelledError:
+                # サーバシャットダウン
+                logger.info("Server shutting down")
+                raise
+
+            except Exception as e:
+                # 予期しないエラー
+                logger.error(f"Unexpected error: {e}", exc_info=True)
+                break
+
     finally:
         # 必ずクリーンアップ
-        self._writer.close()
-        await self._writer.wait_closed()
+        writer.close()
+        await writer.wait_closed()
+        logger.info(f"Connection closed: {addr}")
 ```
 
 ### テストで確認
@@ -507,19 +496,30 @@ async def handle(self) -> None:
 pytest tests/test_server.py -v
 ```
 
+エコーサーバーとして正しく動作すれば、送信したデータがそのまま返ってくることが確認できます。
+
 ### 動作確認
 
-サーバを起動して、telnetで接続してみましょう：
+サーバを起動して、ncコマンドで接続してみましょう：
 
 ```bash
 # ターミナル1: サーバを起動
 python -m mini_redis
 
-# ターミナル2: telnetで接続
-telnet localhost 6379
+# ターミナル2: ncで接続
+nc localhost 6379
 ```
 
-この段階では、まだRESPプロトコルのパーサやコマンド実行が未実装なので、何を送ってもエラーが返ってくるはずです。これは正常です。
+試しに何か入力してEnterキーを押すと、RESP形式のデータ（`\r\n`で終わる行）がそのままエコーバックされることが確認できます。
+
+**例**:
+```bash
+$ nc localhost 6379
+*1\r\n$4\r\nPING\r\n    # 入力
+*1\r\n$4\r\nPING\r\n    # エコーバックされる
+```
+
+この段階では、まだRESPプロトコルのパーサやコマンド実行が未実装なので、受信したデータをそのまま返すだけです。次のセクションでプロトコルパーサを実装します。
 
 もし詰まった場合は、完成版コード（`solutions/mini_redis/server.py`）も参考にしてください。
 
