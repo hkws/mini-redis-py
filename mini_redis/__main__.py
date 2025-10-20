@@ -18,7 +18,7 @@ from mini_redis.storage import DataStore
 def setup_logging() -> None:
     """ログ設定を初期化."""
     logging.basicConfig(
-        level=logging.INFO,
+        level=logging.DEBUG,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         handlers=[logging.StreamHandler(sys.stdout)],
     )
@@ -28,6 +28,7 @@ async def main() -> None:
 
     setup_logging()
     logger = logging.getLogger(__name__)
+    logger.setLevel(logging.DEBUG)
 
     # コンポーネントの初期化
     store = DataStore()

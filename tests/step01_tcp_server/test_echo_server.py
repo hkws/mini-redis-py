@@ -36,6 +36,7 @@ class MockTransport:
         """モックTransportを初期化."""
         self.buffer = bytearray()
         self._is_closing = False
+        self._protocol: asyncio.Protocol | None = None
 
     def write(self, data: bytes) -> None:
         """データをバッファに書き込む."""
@@ -48,12 +49,18 @@ class MockTransport:
     def close(self) -> None:
         """接続を閉じる."""
         self._is_closing = True
+        if self._protocol is not None:
+            self._protocol.connection_lost(None)
 
     def get_extra_info(self, name: str, default=None) -> tuple[str, int] | None:
         """接続情報を返す."""
         if name == "peername":
             return ("127.0.0.1", 12345)
         return default
+
+    def set_protocol(self, protocol: asyncio.Protocol) -> None:
+        """接続しているプロトコルを登録する."""
+        self._protocol = protocol
 
 
 def create_mock_streams() -> tuple[asyncio.StreamReader, asyncio.StreamWriter, MockTransport]:
@@ -64,7 +71,8 @@ def create_mock_streams() -> tuple[asyncio.StreamReader, asyncio.StreamWriter, M
     """
     reader = asyncio.StreamReader()
     transport = MockTransport()
-    protocol = asyncio.StreamReaderProtocol(asyncio.StreamReader())
+    protocol = asyncio.StreamReaderProtocol(reader)
+    transport.set_protocol(protocol)
     writer = asyncio.StreamWriter(transport, protocol, reader, asyncio.get_event_loop())
     return reader, writer, transport
 

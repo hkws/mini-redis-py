@@ -448,7 +448,6 @@ async def handle_client(reader, writer):
 ```python
 async def handle(self, reader: StreamReader, writer: StreamWriter) -> None:
     """クライアント接続を処理する（エコーサーバー）"""
-    # クライアント情報を取得
     addr = writer.get_extra_info("peername")
     logger.info(f"Client connected: {addr}")
 
