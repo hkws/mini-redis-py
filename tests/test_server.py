@@ -1,114 +1,76 @@
-"""Tests for TCPServer and ClientHandler."""
+"""Tests for ClientHandler.
+
+ClientHandler.handle()メソッドに焦点を当てたテストスイート。
+TCPServerは実装済みのため、テスト対象外。
+"""
 
 import asyncio
-import contextlib
-import time
 
 import pytest
 
-from mini_redis.commands import CommandHandler
-from mini_redis.expiry import ExpiryManager
-from mini_redis.protocol import RESPParser
-from mini_redis.server import ClientHandler, TCPServer
-from mini_redis.storage import DataStore
+# 他のコンポーネントは完成版を使用
+from solutions.mini_redis.commands import CommandHandler
+from solutions.mini_redis.expiry import ExpiryManager
+from solutions.mini_redis.protocol import RESPParser
+from solutions.mini_redis.storage import DataStore
+
+# テスト対象のみmini_redisからimport
+from mini_redis.server import ClientHandler
 
 
-class TestTCPServer:
-    """TCPサーバのテスト."""
+class MockTransport:
+    """テスト用のモックTransport.
 
-    @pytest.mark.asyncio
-    async def test_server_starts_and_stops(self) -> None:
-        """サーバが起動と停止を正しく行う."""
-        server = TCPServer(host="127.0.0.1", port=16379)
+    StreamWriterに渡すデータをキャプチャするために使用します。
+    """
 
-        # サーバを起動するタスクを作成
-        server_task = asyncio.create_task(server.start())
+    def __init__(self) -> None:
+        """モックTransportを初期化."""
+        self.buffer = bytearray()
+        self._is_closing = False
 
-        # サーバが起動するまで少し待つ
-        await asyncio.sleep(0.1)
+    def write(self, data: bytes) -> None:
+        """データをバッファに書き込む."""
+        self.buffer.extend(data)
 
-        # サーバが起動していることを確認（接続を試みる）
-        try:
-            reader, writer = await asyncio.open_connection("127.0.0.1", 16379)
-            writer.close()
-            await writer.wait_closed()
-        except Exception as e:
-            pytest.fail(f"Failed to connect to server: {e}")
+    def is_closing(self) -> bool:
+        """接続が閉じられているかを返す."""
+        return self._is_closing
 
-        # サーバを停止
-        await server.stop()
-        server_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await server_task
+    def close(self) -> None:
+        """接続を閉じる."""
+        self._is_closing = True
 
-    @pytest.mark.asyncio
-    async def test_server_accepts_multiple_connections(self) -> None:
-        """サーバが複数の接続を受け入れる."""
-        server = TCPServer(host="127.0.0.1", port=16380)
+    def get_extra_info(self, name: str, default=None) -> tuple[str, int] | None:
+        """接続情報を返す."""
+        if name == "peername":
+            return ("127.0.0.1", 12345)
+        return default
 
-        # サーバを起動
-        server_task = asyncio.create_task(server.start())
-        await asyncio.sleep(0.1)
 
-        # 複数の接続を開く
-        connections = []
-        for _ in range(3):
-            reader, writer = await asyncio.open_connection("127.0.0.1", 16380)
-            connections.append((reader, writer))
+def create_mock_streams() -> tuple[asyncio.StreamReader, asyncio.StreamWriter, MockTransport]:
+    """テスト用のStreamReaderとStreamWriterのペアを作成.
 
-        # 接続を閉じる
-        for _, writer in connections:
-            writer.close()
-            await writer.wait_closed()
-
-        # サーバを停止
-        await server.stop()
-        server_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await server_task
-
-    @pytest.mark.asyncio
-    async def test_server_starts_active_expiry(self) -> None:
-        """サーバ起動時にActive Expiryバックグラウンドタスクが開始される."""
-        # カスタムストアとエクスパイアマネージャを作成
-        store = DataStore()
-        expiry = ExpiryManager(store)
-
-        # 期限切れキーを設定
-        store.set("expired_key", "value")
-        store.set_expiry("expired_key", time.time() - 1)  # 既に期限切れ
-
-        # サーバを起動（ストアとエクスパイアマネージャを注入）
-        server = TCPServer(host="127.0.0.1", port=16382, store=store, expiry=expiry)
-        server_task = asyncio.create_task(server.start())
-        await asyncio.sleep(0.1)
-
-        # 1.5秒待つ（Active Expiryが少なくとも1回実行される）
-        await asyncio.sleep(1.5)
-
-        # 期限切れキーが削除されていることを確認
-        assert store.exists("expired_key") is False
-
-        # サーバを停止
-        await server.stop()
-        server_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await server_task
+    Returns:
+        (reader, writer, transport)のタプル
+    """
+    reader = asyncio.StreamReader()
+    transport = MockTransport()
+    protocol = asyncio.StreamReaderProtocol(asyncio.StreamReader())
+    writer = asyncio.StreamWriter(transport, protocol, reader, asyncio.get_event_loop())
+    return reader, writer, transport
 
 
 class TestClientHandler:
-    """ClientHandlerのテスト."""
+    """ClientHandler.handle()メソッドのテスト."""
 
     @pytest.mark.asyncio
     async def test_handle_ping_command(self) -> None:
         """PINGコマンドを正しく処理する."""
         # モックのストリームを作成
-        reader = asyncio.StreamReader()
-        writer_transport = asyncio.Transport()
-        writer_protocol = asyncio.StreamReaderProtocol(asyncio.StreamReader())
-        writer = asyncio.StreamWriter(writer_transport, writer_protocol, reader, asyncio.get_event_loop())
+        reader, writer, transport = create_mock_streams()
 
-        # RESPパーサとコマンドハンドラを準備
+        # 依存関係を準備
         parser = RESPParser()
         store = DataStore()
         expiry = ExpiryManager(store)
@@ -120,20 +82,17 @@ class TestClientHandler:
         reader.feed_data(ping_command)
         reader.feed_eof()
 
-        # ハンドラを実行（接続が閉じられるまで）
-        # 注: この実装はwriter.write()が呼ばれたデータをキャプチャする必要がある
-        # 今はシンプルに実行して例外が起きないことを確認
-        # EOFが発生するのは正常
-        with contextlib.suppress(Exception):
-            await client_handler.handle(reader, writer)
+        # ハンドラを実行（EOFで終了）
+        await client_handler.handle(reader, writer)
+
+        # 応答を検証
+        response = bytes(transport.buffer)
+        assert response == b"+PONG\r\n"
 
     @pytest.mark.asyncio
     async def test_handle_multiple_commands(self) -> None:
         """複数のコマンドを順次処理する."""
-        reader = asyncio.StreamReader()
-        writer_transport = asyncio.Transport()
-        writer_protocol = asyncio.StreamReaderProtocol(asyncio.StreamReader())
-        writer = asyncio.StreamWriter(writer_transport, writer_protocol, reader, asyncio.get_event_loop())
+        reader, writer, transport = create_mock_streams()
 
         parser = RESPParser()
         store = DataStore()
@@ -141,45 +100,253 @@ class TestClientHandler:
         handler = CommandHandler(store, expiry)
         client_handler = ClientHandler(parser, handler)
 
-        # 複数のコマンドを送信
-        commands = b"*1\r\n$4\r\nPING\r\n" b"*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n"
+        # 複数のコマンドを送信（PING、SET、GET）
+        commands = (
+            b"*1\r\n$4\r\nPING\r\n"
+            b"*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n"
+            b"*2\r\n$3\r\nGET\r\n$3\r\nfoo\r\n"
+        )
         reader.feed_data(commands)
         reader.feed_eof()
 
-        with contextlib.suppress(Exception):
-            await client_handler.handle(reader, writer)
+        # ハンドラを実行
+        await client_handler.handle(reader, writer)
 
-
-@pytest.mark.integration
-class TestIntegration:
-    """統合テスト: TCPサーバとクライアントハンドラの統合."""
+        # 応答を検証（PONG + OK + bar）
+        response = bytes(transport.buffer)
+        assert response == b"+PONG\r\n+OK\r\n$3\r\nbar\r\n"
 
     @pytest.mark.asyncio
-    async def test_server_handles_real_connection(self) -> None:
-        """サーバが実際のTCP接続を処理する."""
-        server = TCPServer(host="127.0.0.1", port=16381)
+    async def test_handle_set_get_commands(self) -> None:
+        """SET/GETコマンドの基本動作を確認."""
+        reader, writer, transport = create_mock_streams()
 
-        # サーバを起動
-        server_task = asyncio.create_task(server.start())
-        await asyncio.sleep(0.2)
+        parser = RESPParser()
+        store = DataStore()
+        expiry = ExpiryManager(store)
+        handler = CommandHandler(store, expiry)
+        client_handler = ClientHandler(parser, handler)
 
-        # クライアントとして接続してPINGコマンドを送信
-        reader, writer = await asyncio.open_connection("127.0.0.1", 16381)
+        # SET key value → GET key
+        commands = (
+            b"*3\r\n$3\r\nSET\r\n$4\r\nname\r\n$5\r\nAlice\r\n"
+            b"*2\r\n$3\r\nGET\r\n$4\r\nname\r\n"
+        )
+        reader.feed_data(commands)
+        reader.feed_eof()
 
-        # PINGコマンドを送信
-        writer.write(b"*1\r\n$4\r\nPING\r\n")
-        await writer.drain()
+        await client_handler.handle(reader, writer)
 
-        # レスポンスを読み取る
-        response = await reader.readuntil(b"\r\n")
-        assert response == b"+PONG\r\n"
+        # 応答を検証（OK + Alice）
+        response = bytes(transport.buffer)
+        assert response == b"+OK\r\n$5\r\nAlice\r\n"
 
-        # 接続を閉じる
-        writer.close()
-        await writer.wait_closed()
+    @pytest.mark.asyncio
+    async def test_handle_get_nonexistent_key(self) -> None:
+        """存在しないキーのGETでnullが返ることを確認."""
+        reader, writer, transport = create_mock_streams()
 
-        # サーバを停止
-        await server.stop()
-        server_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await server_task
+        parser = RESPParser()
+        store = DataStore()
+        expiry = ExpiryManager(store)
+        handler = CommandHandler(store, expiry)
+        client_handler = ClientHandler(parser, handler)
+
+        # 存在しないキーをGET
+        command = b"*2\r\n$3\r\nGET\r\n$7\r\nmissing\r\n"
+        reader.feed_data(command)
+        reader.feed_eof()
+
+        await client_handler.handle(reader, writer)
+
+        # 応答を検証（null bulk string）
+        response = bytes(transport.buffer)
+        assert response == b"$-1\r\n"
+
+    @pytest.mark.asyncio
+    async def test_handle_del_command(self) -> None:
+        """DELコマンドで削除された数が返ることを確認."""
+        reader, writer, transport = create_mock_streams()
+
+        parser = RESPParser()
+        store = DataStore()
+        expiry = ExpiryManager(store)
+        handler = CommandHandler(store, expiry)
+        client_handler = ClientHandler(parser, handler)
+
+        # SET key value → DEL key
+        commands = (
+            b"*3\r\n$3\r\nSET\r\n$3\r\nkey\r\n$3\r\nval\r\n"
+            b"*2\r\n$3\r\nDEL\r\n$3\r\nkey\r\n"
+        )
+        reader.feed_data(commands)
+        reader.feed_eof()
+
+        await client_handler.handle(reader, writer)
+
+        # 応答を検証（OK + 1）
+        response = bytes(transport.buffer)
+        assert response == b"+OK\r\n:1\r\n"
+
+    @pytest.mark.asyncio
+    async def test_handle_incr_command(self) -> None:
+        """INCRコマンドで整数値がインクリメントされることを確認."""
+        reader, writer, transport = create_mock_streams()
+
+        parser = RESPParser()
+        store = DataStore()
+        expiry = ExpiryManager(store)
+        handler = CommandHandler(store, expiry)
+        client_handler = ClientHandler(parser, handler)
+
+        # SET counter 10 → INCR counter
+        commands = (
+            b"*3\r\n$3\r\nSET\r\n$7\r\ncounter\r\n$2\r\n10\r\n"
+            b"*2\r\n$4\r\nINCR\r\n$7\r\ncounter\r\n"
+        )
+        reader.feed_data(commands)
+        reader.feed_eof()
+
+        await client_handler.handle(reader, writer)
+
+        # 応答を検証（OK + 11）
+        response = bytes(transport.buffer)
+        assert response == b"+OK\r\n:11\r\n"
+
+    @pytest.mark.asyncio
+    async def test_handle_unknown_command_error(self) -> None:
+        """不正なコマンドを送信してエラーが返ることを確認."""
+        reader, writer, transport = create_mock_streams()
+
+        parser = RESPParser()
+        store = DataStore()
+        expiry = ExpiryManager(store)
+        handler = CommandHandler(store, expiry)
+        client_handler = ClientHandler(parser, handler)
+
+        # 存在しないコマンド
+        invalid_command = b"*1\r\n$7\r\nINVALID\r\n"
+        reader.feed_data(invalid_command)
+        reader.feed_eof()
+
+        await client_handler.handle(reader, writer)
+
+        # エラーレスポンスを検証
+        response = bytes(transport.buffer)
+        assert response.startswith(b"-ERR")
+
+    @pytest.mark.asyncio
+    async def test_handle_incr_non_integer_error(self) -> None:
+        """INCRコマンドで非整数値を持つキーを操作してエラーが返ることを確認."""
+        reader, writer, transport = create_mock_streams()
+
+        parser = RESPParser()
+        store = DataStore()
+        expiry = ExpiryManager(store)
+        handler = CommandHandler(store, expiry)
+        client_handler = ClientHandler(parser, handler)
+
+        # キーに文字列をセット→INCRで操作
+        commands = (
+            b"*3\r\n$3\r\nSET\r\n$3\r\nkey\r\n$5\r\nhello\r\n"  # SET key hello
+            b"*2\r\n$4\r\nINCR\r\n$3\r\nkey\r\n"  # INCR key
+        )
+        reader.feed_data(commands)
+        reader.feed_eof()
+
+        await client_handler.handle(reader, writer)
+
+        # 応答を検証（OK + エラー）
+        response = bytes(transport.buffer)
+        assert b"+OK\r\n" in response
+        assert b"-ERR" in response
+
+    @pytest.mark.asyncio
+    async def test_handle_wrong_number_of_args_error(self) -> None:
+        """引数の数が間違っているコマンドでエラーが返ることを確認."""
+        reader, writer, transport = create_mock_streams()
+
+        parser = RESPParser()
+        store = DataStore()
+        expiry = ExpiryManager(store)
+        handler = CommandHandler(store, expiry)
+        client_handler = ClientHandler(parser, handler)
+
+        # SETコマンドに引数が足りない（keyのみでvalueなし）
+        command = b"*2\r\n$3\r\nSET\r\n$3\r\nkey\r\n"
+        reader.feed_data(command)
+        reader.feed_eof()
+
+        await client_handler.handle(reader, writer)
+
+        # エラーレスポンスを検証
+        response = bytes(transport.buffer)
+        assert b"-ERR" in response
+
+    @pytest.mark.asyncio
+    async def test_handle_client_immediate_disconnect(self) -> None:
+        """クライアントが即座に切断したときに正しくクリーンアップされることを確認."""
+        reader, writer, transport = create_mock_streams()
+
+        parser = RESPParser()
+        store = DataStore()
+        expiry = ExpiryManager(store)
+        handler = CommandHandler(store, expiry)
+        client_handler = ClientHandler(parser, handler)
+
+        # コマンドを送信せずにEOFを送る（即座に切断）
+        reader.feed_eof()
+
+        # ハンドラを実行（エラーなく終了するべき）
+        await client_handler.handle(reader, writer)
+
+        # writerが閉じられていることを確認
+        assert transport.is_closing()
+
+    @pytest.mark.asyncio
+    async def test_handle_partial_command_then_disconnect(self) -> None:
+        """不完全なコマンドを受信後に切断した場合の処理を確認."""
+        reader, writer, transport = create_mock_streams()
+
+        parser = RESPParser()
+        store = DataStore()
+        expiry = ExpiryManager(store)
+        handler = CommandHandler(store, expiry)
+        client_handler = ClientHandler(parser, handler)
+
+        # 不完全なコマンド（配列のサイズのみ）
+        partial_command = b"*3\r\n$3\r\nSET\r\n"
+        reader.feed_data(partial_command)
+        reader.feed_eof()  # 途中でEOF
+
+        # ハンドラを実行（エラーログが出るが、正常終了するべき）
+        await client_handler.handle(reader, writer)
+
+        # writerが閉じられていることを確認
+        assert transport.is_closing()
+
+    @pytest.mark.asyncio
+    async def test_handle_exists_command(self) -> None:
+        """EXISTSコマンドが正しく動作することを確認."""
+        reader, writer, transport = create_mock_streams()
+
+        parser = RESPParser()
+        store = DataStore()
+        expiry = ExpiryManager(store)
+        handler = CommandHandler(store, expiry)
+        client_handler = ClientHandler(parser, handler)
+
+        # SET key → EXISTS key → EXISTS missing
+        commands = (
+            b"*3\r\n$3\r\nSET\r\n$3\r\nkey\r\n$3\r\nval\r\n"
+            b"*2\r\n$6\r\nEXISTS\r\n$3\r\nkey\r\n"
+            b"*2\r\n$6\r\nEXISTS\r\n$7\r\nmissing\r\n"
+        )
+        reader.feed_data(commands)
+        reader.feed_eof()
+
+        await client_handler.handle(reader, writer)
+
+        # 応答を検証（OK + 1 + 0）
+        response = bytes(transport.buffer)
+        assert response == b"+OK\r\n:1\r\n:0\r\n"

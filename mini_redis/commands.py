@@ -43,12 +43,9 @@ class CommandHandler:
             store: DataStoreのインスタンス
             expiry: ExpiryManagerのインスタンス
 
-        【実装ステップ】
-        1. self._store = store
-        2. self._expiry = expiry
         """
-        # TODO: 実装してください
-        raise NotImplementedError("__init__()を実装してください")
+        self._store = store
+        self._expiry = expiry
 
     async def execute(self, command: list[str]) -> CommandResult:
         """コマンドを実行.

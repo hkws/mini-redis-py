@@ -9,8 +9,8 @@ import logging
 from asyncio import StreamReader, StreamWriter
 from typing import TYPE_CHECKING
 
-from .commands import CommandHandler
-from .protocol import RESPParser
+from .commands import CommandHandler, CommandError
+from .protocol import RESPParser, RESPProtocolError
 
 if TYPE_CHECKING:
     from .expiry import ExpiryManager
@@ -139,14 +139,9 @@ class ClientHandler:
         コマンドの読み取り→パース→実行→応答のループを実行する。
         接続切断時に適切にクリーンアップする。
         """
-        from mini_redis.commands import CommandError
-        from mini_redis.protocol import RESPProtocolError
-
+        
         addr = writer.get_extra_info("peername")
         logger.info(f"Client connected: {addr}")
-
-        from .commands import CommandError
-        from .protocol import RESPProtocolError
 
         try:
             while True:
@@ -184,7 +179,6 @@ class ClientHandler:
                     break
 
                 except asyncio.CancelledError:
-                    # サーバシャットダウン時のグレースフルハンドリング
                     logger.info(f"Connection to {addr} cancelled due to server shutdown")
                     raise
 

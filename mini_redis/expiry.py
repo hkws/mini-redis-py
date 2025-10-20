@@ -53,13 +53,10 @@ class ExpiryManager:
         Args:
             store: DataStoreのインスタンス
 
-        【実装ステップ】
-        1. self._store = store
-        2. self._task: asyncio.Task[None] | None = None（バックグラウンドタスク）
-        3. self._running = False（実行状態フラグ）
         """
-        # TODO: 実装してください
-        raise NotImplementedError("__init__()を実装してください")
+        self._store = store
+        self._task: asyncio.Task[None] | None = None
+        self._running = False
 
     def check_and_remove_expired(self, key: str) -> bool:
         """Passive expiry: キーが期限切れかチェックし、期限切れなら削除.
@@ -149,7 +146,7 @@ class ExpiryManager:
         awaitしないため、すぐにメソッドは終了しますが、タスクは実行し続けます。
         """
         # TODO: 実装してください
-        raise NotImplementedError("start()を実装してください")
+        pass
 
     async def stop(self) -> None:
         """Active expiryタスクを停止.
@@ -174,7 +171,7 @@ class ExpiryManager:
         3. CancelledErrorをキャッチして処理
         """
         # TODO: 実装してください
-        raise NotImplementedError("stop()を実装してください")
+        pass
 
     async def _run_active_expiry(self) -> None:
         """内部: Active expiryのメインループ.

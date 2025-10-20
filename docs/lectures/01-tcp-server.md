@@ -378,14 +378,77 @@ async def handle_client(reader, writer):
 
 ### 実装する内容
 
-1. `mini_redis/server.py`を開く
+1. `mini_redis/__main__.py`と`mini_redis/server.py`を開き、実装済みの内容を確認
+2. `mini_redis/protocol.py`のRESPParserがどのようなメソッドを持つか確認（のちのステップにて実装するため、docstringを参考にしてください）
 2. `ClientHandler.handle()` メソッドを実装
    - コマンドの読み取り→パース→実行→応答のループ
    - 結果の型判定（str/int/None）とエンコード
    - エラーハンドリング（CommandError、RESPProtocolError等）
    - `finally`句でクリーンアップ
 
-**重要**: `TCPServer.start()`と`stop()`は実装済みです。`ClientHandler.handle()`のみ実装してください。
+なお、`TCPServer.start()`と`stop()`は実装済みです。
+
+### ClientHandler.handle()実装ステップの詳細
+
+#### ステップ1: クライアント情報を取得してログ出力
+
+1. `writer.get_extra_info("peername")`でクライアントのアドレスを取得
+2. `logger.info(f"Client connected: {addr}")`でログ出力
+
+#### ステップ2: try-finally-whileループの構造を作成
+
+1. `try`ブロックを作成
+2. `finally`ブロックで`writer.close()`と`writer.wait_closed()`を呼び出す
+3. `try`ブロック内に`while True:`無限ループを作成
+
+#### ステップ3: コマンドの読み取りとパース
+
+1. `try`ブロック内で`self._parser.parse_command(reader)`を呼び出す
+2. 結果を`command`変数に格納
+
+#### ステップ4: コマンドの実行
+
+1. `self._handler.execute(command)`を呼び出す
+2. 結果を`result`変数に格納
+
+#### ステップ5: 結果の型判定とエンコード
+
+1. `isinstance(result, str)`の場合:
+   - `self._parser.encode_simple_string(result)`
+2. `isinstance(result, int)`の場合:
+   - `self._parser.encode_integer(result)`
+3. それ以外（`result is None`）の場合:
+   - `self._parser.encode_bulk_string(None)`
+4. エンコード結果を`response`変数に格納
+
+#### ステップ6: 応答の送信
+
+1. `writer.write(response)`で応答を送信
+2. `await writer.drain()`で送信完了を待つ
+
+#### ステップ7: エラーハンドリング
+
+1. **CommandError例外をキャッチ**:
+   - `str(e)`でエラーメッセージを取得
+   - `self._parser.encode_error(error_msg)`でエンコード
+   - `writer.write()`と`await writer.drain()`で送信
+   - ループを継続
+
+2. **RESPProtocolError例外をキャッチ**:
+   - `logger.error()`でログ出力
+   - `break`でループを抜ける
+
+3. **asyncio.IncompleteReadError例外をキャッチ**:
+   - `logger.info()`でログ出力（クライアント切断）
+   - `break`でループを抜ける
+
+4. **asyncio.CancelledError例外をキャッチ**:
+   - `logger.info()`でログ出力（サーバシャットダウン）
+   - `raise`で例外を再送出 -> main関数内でcatchし、TCPServer.stop()を実行する
+
+5. **Exception例外をキャッチ（予期しないエラー）**:
+   - `logger.error()`でログ出力
+   - `break`でループを抜ける
 
 ### 実装例
 

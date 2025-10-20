@@ -48,13 +48,8 @@ class DataStore:
     """
 
     def __init__(self) -> None:
-        """ストアを初期化.
-
-        【実装ステップ】
-        1. 空の辞書を作成: self._data: dict[str, StoreEntry] = {}
-        """
-        # TODO: 実装してください
-        raise NotImplementedError("__init__()を実装してください")
+        """ストアを初期化."""
+        self._data: dict[str, StoreEntry] = {}
 
     def get(self, key: str) -> str | None:
         """キーの値を取得.

@@ -25,14 +25,7 @@ def setup_logging() -> None:
 
 
 async def main() -> None:
-    """メインエントリポイント.
 
-    実装のヒント:
-    1. 各コンポーネントのインスタンスを作成
-    2. TCPServerを起動
-    3. Active Expiryバックグラウンドタスクを起動
-    4. Ctrl+Cで停止されるまで実行
-    """
     setup_logging()
     logger = logging.getLogger(__name__)
 
