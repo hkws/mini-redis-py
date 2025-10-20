@@ -493,7 +493,7 @@ async def handle(self, reader: StreamReader, writer: StreamWriter) -> None:
 ### テストで確認
 
 ```bash
-pytest tests/test_server.py -v
+pytest tests/step01_tcp_server/ -v
 ```
 
 エコーサーバーとして正しく動作すれば、送信したデータがそのまま返ってくることが確認できます。

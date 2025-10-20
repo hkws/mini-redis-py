@@ -155,28 +155,10 @@ class ClientHandler:
         self._handler = handler
 
     async def handle(self, reader: StreamReader, writer: StreamWriter) -> None:
-        """クライアント接続を処理するメインループ（エコーサーバー版）.
+        """クライアント接続を処理するメインループ.
 
         Args:
             reader: asyncioのStreamReader
             writer: asyncioのStreamWriter
-
-        実装のポイント:
-        - try-finally構造で確実にクリーンアップ
-        - 無限ループでデータを処理（読み取り→エコーバック）
-        - 適切なエラーハンドリング
-
-        詳細な実装ステップは docs/lectures/01-tcp-server.md を参照してください。
-
-        TODO: 次のセクションで以下を実装
-        - コマンドのパース (self._parser.parse_command())
-        - コマンドの実行 (self._handler.execute())
-        - 結果の型判定とエンコード (encode_simple_string/encode_integer/encode_bulk_string)
         """
-        # TODO: ここに実装を追加してください
-        # ステップ1: クライアント情報を取得してログ出力
-        # ステップ2: try-finally-whileループの構造を作成
-        # ステップ3: データの読み取り
-        # ステップ4: データをそのままエコーバック
-        # ステップ5: エラーハンドリング
         pass

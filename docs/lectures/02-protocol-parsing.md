@@ -482,11 +482,12 @@ encode_response(None)      # → b'$-1\r\n'
 ### テストで確認
 
 ```bash
-# プロトコルのテストのみ実行
-pytest tests/test_protocol.py -v
+# すべてのテストを実行
+pytest tests/step02_protocol/ -v
 
 # 特定のテストクラスのみ
-pytest tests/test_protocol.py::TestRESPParser -v
+pytest tests/step02_protocol/test_resp_protocol.py::TestStep02RESPParser -v
+pytest tests/step02_protocol/test_resp_protocol.py::TestStep02RESPEncoder -v
 ```
 
 ## 次のステップ

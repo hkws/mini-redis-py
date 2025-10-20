@@ -456,14 +456,14 @@ async def _sample_and_remove_expired(self) -> None:
 ### テストで確認
 
 ```bash
-# 有効期限管理のテスト
-pytest tests/test_expiry.py -v
+# すべてのテストを実行
+pytest tests/step04_expiry/ -v
 
 # Passive Expiryのテスト
-pytest tests/test_expiry.py::TestPassiveExpiry -v
+pytest tests/step04_expiry/test_expiry.py::TestStep04PassiveExpiry -v
 
 # Active Expiryのテスト
-pytest tests/test_expiry.py::TestActiveExpiry -v
+pytest tests/step04_expiry/test_expiry.py::TestStep04ActiveExpiry -v
 ```
 
 ## 動作確認
@@ -511,14 +511,14 @@ OK
 ## テストの実行
 
 ```bash
-# 有効期限管理のテスト
-pytest tests/test_expiry.py -v
+# すべてのテストを実行
+pytest tests/step04_expiry/ -v
 
 # Passive Expiryのテスト
-pytest tests/test_expiry.py::TestPassiveExpiry -v
+pytest tests/step04_expiry/test_expiry.py::TestStep04PassiveExpiry -v
 
 # Active Expiryのテスト
-pytest tests/test_expiry.py::TestActiveExpiry -v
+pytest tests/step04_expiry/test_expiry.py::TestStep04ActiveExpiry -v
 ```
 
 ## 次のステップ

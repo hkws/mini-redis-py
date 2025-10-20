@@ -585,7 +585,7 @@ async def handle_client(reader: StreamReader, writer: StreamWriter) -> None:
 #### テストで確認
 
 ```bash
-pytest tests/test_storage.py -v
+pytest tests/step03_commands/test_storage.py -v
 ```
 
 ### パート2: コマンド実行層の実装（20分）
@@ -676,12 +676,15 @@ except ValueError:
 #### テストで確認
 
 ```bash
-# 全コマンドのテスト
-pytest tests/test_commands.py -v
+# コマンドテストを実行
+pytest tests/step03_commands/test_commands.py -v
+
+# すべてのテストを実行（ストレージ + コマンド）
+pytest tests/step03_commands/ -v
 
 # 特定のコマンドのみ
-pytest tests/test_commands.py::TestCommands::test_ping -v
-pytest tests/test_commands.py::TestCommands::test_incr -v
+pytest tests/step03_commands/test_commands.py::TestStep03PingCommand -v
+pytest tests/step03_commands/test_commands.py::TestStep03IncrCommand -v
 ```
 
 ## 動作確認の手順

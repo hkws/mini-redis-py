@@ -38,18 +38,22 @@ Pythonで作る小さなRedis実装（学習用）
 
 ```
 mini-redis-py/
-├── docs/                # 学習資料
-│   ├── architecture.md  # アーキテクチャ解説
-│   └── lectures/        # 段階別講義資料（理論＋実装ガイド）
-├── mini_redis/          # 学習者向け実装雛形（TODOコメント付き）
-│   ├── protocol.py      # RESPプロトコル
-│   ├── storage.py       # データストレージ
-│   ├── commands.py      # コマンド実行層
-│   ├── expiry.py        # 有効期限管理
-│   └── server.py        # TCPサーバ
-├── solutions/           # 完成版コード（参考用）
-│   └── mini_redis/      # 完全に動作する実装
-└── tests/               # テストスイート
+├── docs/                    # 学習資料
+│   ├── architecture.md      # アーキテクチャ解説
+│   └── lectures/            # 段階別講義資料（理論＋実装ガイド）
+├── mini_redis/              # 学習者向け実装雛形（TODOコメント付き）
+│   ├── protocol.py          # RESPプロトコル
+│   ├── storage.py           # データストレージ
+│   ├── commands.py          # コマンド実行層
+│   ├── expiry.py            # 有効期限管理
+│   └── server.py            # TCPサーバ
+├── solutions/               # 完成版コード（参考用）
+│   └── mini_redis/          # 完全に動作する実装
+└── tests/                   # テストスイート
+    ├── step01_tcp_server/   # Step 01: TCPサーバのテスト
+    ├── step02_protocol/     # Step 02: RESPプロトコルのテスト
+    ├── step03_commands/     # Step 03: コマンド実装のテスト
+    └── step04_expiry/       # Step 04: 有効期限管理のテスト
 ```
 
 詳細なアーキテクチャは [docs/architecture.md](docs/architecture.md) を参照してください。
@@ -109,6 +113,42 @@ python -m mini_redis
 6. **[統合テストとまとめ](docs/lectures/05-summary.md)** (10分) - 動作確認と発展課題
 
 各講義資料には「実装ガイド（ハンズオン）」セクションがあり、理論を学んだ後すぐに実装できるようになっています。
+
+## テストについて
+
+本プロジェクトでは、実装ステップごとにテストが整理されています：
+
+### ステップごとのテスト実行
+
+```bash
+# Step 01: TCPサーバとasyncio
+pytest tests/step01_tcp_server/ -v
+
+# Step 02: RESPプロトコル
+pytest tests/step02_protocol/ -v
+
+# Step 03: コマンド実装
+pytest tests/step03_commands/ -v
+
+# Step 04: 有効期限管理
+pytest tests/step04_expiry/ -v
+
+# すべてのステップテストを実行
+pytest tests/step*/ -v
+```
+
+### 統合テスト
+
+```bash
+# すべてのテストを実行（ルートのテストファイル含む）
+pytest tests/ -v
+
+# 特定の実装ファイルのテスト
+pytest tests/test_protocol.py -v
+pytest tests/test_commands.py -v
+```
+
+各ステップのテストファイルには、対応する講義資料へのリンクと詳細な検証内容が記載されています。
 
 ## 開発ツール
 
