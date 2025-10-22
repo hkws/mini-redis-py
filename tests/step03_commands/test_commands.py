@@ -108,7 +108,7 @@ class TestStep03PingCommand:
         expiry = ExpiryManager(store)
         handler = CommandHandler(store, expiry)
 
-        result = await handler.execute_ping()
+        result = await handler.execute_ping([])
         assert result == "PONG"
 
 
@@ -129,7 +129,7 @@ class TestStep03GetCommand:
         handler = CommandHandler(store, expiry)
         store.set("key1", "value1")
 
-        result = await handler.execute_get("key1")
+        result = await handler.execute_get(["key1"])
         assert result == "value1"
 
     @pytest.mark.asyncio
@@ -144,7 +144,7 @@ class TestStep03GetCommand:
         expiry = ExpiryManager(store)
         handler = CommandHandler(store, expiry)
 
-        result = await handler.execute_get("nonexistent")
+        result = await handler.execute_get(["nonexistent"])
         assert result is None
 
 
@@ -164,7 +164,7 @@ class TestStep03SetCommand:
         expiry = ExpiryManager(store)
         handler = CommandHandler(store, expiry)
 
-        result = await handler.execute_set("key1", "value1")
+        result = await handler.execute_set(["key1", "value1"])
         assert result == "OK"
         assert store.get("key1") == "value1"
 
@@ -181,7 +181,7 @@ class TestStep03SetCommand:
         handler = CommandHandler(store, expiry)
         store.set("key1", "old_value")
 
-        result = await handler.execute_set("key1", "new_value")
+        result = await handler.execute_set(["key1", "new_value"])
         assert result == "OK"
         assert store.get("key1") == "new_value"
 
@@ -203,7 +203,7 @@ class TestStep03IncrCommand:
         expiry = ExpiryManager(store)
         handler = CommandHandler(store, expiry)
 
-        result = await handler.execute_incr("counter")
+        result = await handler.execute_incr(["counter"])
         assert result == 1
         assert store.get("counter") == "1"
 
@@ -222,7 +222,7 @@ class TestStep03IncrCommand:
         handler = CommandHandler(store, expiry)
         store.set("counter", "5")
 
-        result = await handler.execute_incr("counter")
+        result = await handler.execute_incr(["counter"])
         assert result == 6
         assert store.get("counter") == "6"
 
@@ -240,7 +240,7 @@ class TestStep03IncrCommand:
         store.set("key1", "not_an_integer")
 
         with pytest.raises(CommandError, match="not an integer"):
-            await handler.execute_incr("key1")
+            await handler.execute_incr(["key1"])
 
 
 class TestStep03ExpireCommand:
@@ -261,7 +261,7 @@ class TestStep03ExpireCommand:
         handler = CommandHandler(store, expiry)
         store.set("key1", "value1")
 
-        result = await handler.execute_expire("key1", 10)
+        result = await handler.execute_expire(["key1", 10])
         assert result == 1
         assert store.get_expiry("key1") is not None
 
@@ -277,7 +277,7 @@ class TestStep03ExpireCommand:
         expiry = ExpiryManager(store)
         handler = CommandHandler(store, expiry)
 
-        result = await handler.execute_expire("nonexistent", 10)
+        result = await handler.execute_expire(["nonexistent", 10])
         assert result == 0
 
 
@@ -297,7 +297,7 @@ class TestStep03TtlCommand:
         expiry = ExpiryManager(store)
         handler = CommandHandler(store, expiry)
 
-        result = await handler.execute_ttl("nonexistent")
+        result = await handler.execute_ttl(["nonexistent"])
         assert result == -2
 
     @pytest.mark.asyncio
@@ -308,7 +308,7 @@ class TestStep03TtlCommand:
         handler = CommandHandler(store, expiry)
         store.set("key1", "value1")
 
-        result = await handler.execute_ttl("key1")
+        result = await handler.execute_ttl(["key1"])
         assert result == -1
 
     @pytest.mark.asyncio
@@ -328,6 +328,6 @@ class TestStep03TtlCommand:
         store.set("key1", "value1")
         store.set_expiry("key1", time.time() + 10)
 
-        result = await handler.execute_ttl("key1")
+        result = await handler.execute_ttl(["key1"])
         # 9秒以上10秒以下（タイムラグを考慮）
         assert 9 <= result <= 10

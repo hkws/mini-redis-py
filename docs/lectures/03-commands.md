@@ -134,7 +134,7 @@ graph TB
 ```python
 class Commands:
     def __init__(self, storage: Storage, expiry: ExpiryManager):
-        self._storage = storage
+        self._store = storage
         self._expiry = expiry
 
     async def execute(self, command: list[str]) -> str | int | None:
@@ -144,24 +144,25 @@ class Commands:
 
         # コマンド名を大文字に正規化
         cmd_name = command[0].upper()
+        args = command[1:]
 
         # ルーティング
         if cmd_name == "PING":
-            return await self._ping(command[1:])
+            return await self.execute_ping(args)
         elif cmd_name == "GET":
-            return await self._get(command[1:])
+            return await self.execute_get(args)
         elif cmd_name == "SET":
-            return await self._set(command[1:])
+            return await self.execute_set(args)
         elif cmd_name == "INCR":
-            return await self._incr(command[1:])
+            return await self.execute_incr(args)
         elif cmd_name == "EXPIRE":
-            return await self._expire(command[1:])
+            return await self.execute_expire(args)
         elif cmd_name == "TTL":
-            return await self._ttl(command[1:])
+            return await self.execute_ttl(args)
         else:
             raise CommandError(f"ERR unknown command '{cmd_name}'")
 
-    async def _ping(self, args: list[str]) -> str:
+    async def execute_ping(self, args: list[str]) -> str:
         """PINGコマンドを実行"""
         # 実装...
         pass
@@ -182,7 +183,7 @@ class Commands:
 実装例:
 
 ```python
-async def _ping(self, args: list[str]) -> str:
+async def execute_ping(self, args: list[str]) -> str:
     """PINGコマンドを実行"""
     if len(args) == 0:
         # 引数なし: PONGを返す
@@ -225,7 +226,7 @@ PONG
 実装例:
 
 ```python
-async def _get(self, args: list[str]) -> str | None:
+async def execute_get(self, args: list[str]) -> str | None:
     """GETコマンドを実行"""
     # 引数検証
     if len(args) != 1:
@@ -239,7 +240,7 @@ async def _get(self, args: list[str]) -> str | None:
         return None
 
     # 値を取得
-    return self._storage.get(key)
+    return self._store.get(key)
 ```
 
 redis-cliでの実行例:
@@ -269,7 +270,7 @@ OK
 実装:
 
 ```python
-async def _set(self, args: list[str]) -> str:
+async def execute_set(self, args: list[str]) -> str:
     """SETコマンドを実行"""
     # 引数検証
     if len(args) != 2:
@@ -279,7 +280,7 @@ async def _set(self, args: list[str]) -> str:
     value = args[1]
 
     # 値を設定
-    self._storage.set(key, value)
+    self._store.set(key, value)
 
     return "OK"
 ```
@@ -317,7 +318,7 @@ OK
 実装例:
 
 ```python
-async def _incr(self, args: list[str]) -> int:
+async def execute_incr(self, args: list[str]) -> int:
     """INCRコマンドを実行"""
     # 引数検証
     if len(args) != 1:
@@ -328,15 +329,15 @@ async def _incr(self, args: list[str]) -> int:
     # Passive Expiry: 期限切れチェック
     if self._expiry.check_and_remove_expired(key):
         # 期限切れなので、0から開始
-        self._storage.set(key, "1")
+        self._store.set(key, "1")
         return 1
 
     # 現在の値を取得
-    current = self._storage.get(key)
+    current = self._store.get(key)
 
     if current is None:
         # キーが存在しない: 0から開始
-        self._storage.set(key, "1")
+        self._store.set(key, "1")
         return 1
 
     # 整数に変換を試みる
@@ -347,7 +348,7 @@ async def _incr(self, args: list[str]) -> int:
 
     # インクリメント
     new_value = value + 1
-    self._storage.set(key, str(new_value))
+    self._store.set(key, str(new_value))
 
     return new_value
 ```
@@ -383,7 +384,7 @@ OK
 実装例:
 
 ```python
-async def _expire(self, args: list[str]) -> int:
+async def execute_expire(self, args: list[str]) -> int:
     """EXPIREコマンドを実行"""
     # 引数検証
     if len(args) != 2:
@@ -407,11 +408,11 @@ async def _expire(self, args: list[str]) -> int:
         return 0
 
     # キーが存在するかチェック
-    if self._storage.get(key) is None:
+    if self._store.get(key) is None:
         return 0
 
     # 有効期限を設定
-    self._expiry.set_expiry(key, seconds)
+    self._store_.set_expiry(key, seconds)
     return 1
 ```
 
@@ -447,7 +448,7 @@ OK
 実装:
 
 ```python
-async def _ttl(self, args: list[str]) -> int:
+async def execute_ttl(self, args: list[str]) -> int:
     """TTLコマンドを実行"""
     # 引数検証
     if len(args) != 1:
@@ -461,16 +462,18 @@ async def _ttl(self, args: list[str]) -> int:
         return -2
 
     # キーが存在するかチェック
-    if self._storage.get(key) is None:
+    if self._store.get(key) is None:
         return -2
 
     # 有効期限を取得
-    ttl = self._expiry.get_ttl(key)
+    ttl = self._store_.get_ttl(key)
 
     if ttl is None:
         # 有効期限が設定されていない
         return -1
 
+    # 残り秒数を計算
+    remaining = int(expiry_at - time.time())
     return ttl
 ```
 

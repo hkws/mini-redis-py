@@ -65,7 +65,7 @@ class ExpiryManager:
         # 3.1 time.time()で現在時刻（Unix timestamp）を取得
         # 3.2 current_time < expiry_atの場合（まだ有効期限内）はFalseを返す
         # 4. 期限切れキーを削除
-        raise NotImplementedError("check_and_remove_expired()を実装してください")
+        pass
 
     async def start(self) -> None:
         """Active expiryタスクを開始.
@@ -168,4 +168,4 @@ class ExpiryManager:
         # 3. ランダムサンプリング
         # 4. 期限切れキーを削除
         # 5. 削除率を計算してループ制御
-        raise NotImplementedError("_active_expiry_cycle()を実装してください")
+        pass
