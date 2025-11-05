@@ -367,7 +367,7 @@ class RESPParser:
 #### 1. Simple Stringのエンコード
 
 ```python
-def encode_simple_string(value: str) -> bytes:
+def encode_simple_string(self, value: str) -> bytes:
     """Simple Stringをエンコードする"""
     return f"+{value}\r\n".encode('utf-8')
 
@@ -379,7 +379,7 @@ encode_simple_string("PONG")    # → b'+PONG\r\n'
 #### 2. Errorのエンコード
 
 ```python
-def encode_error(message: str) -> bytes:
+def encode_error(self, message: str) -> bytes:
     """エラーメッセージをエンコードする"""
     return f"-{message}\r\n".encode('utf-8')
 
@@ -391,7 +391,7 @@ encode_error("ERR unknown command")
 #### 3. Integerのエンコード
 
 ```python
-def encode_integer(value: int) -> bytes:
+def encode_integer(self, value: int) -> bytes:
     """整数をエンコードする"""
     return f":{value}\r\n".encode('utf-8')
 
@@ -404,7 +404,7 @@ encode_integer(0)      # → b':0\r\n'
 #### 4. Bulk Stringのエンコード
 
 ```python
-def encode_bulk_string(value: str | None) -> bytes:
+def encode_bulk_string(self, value: str | None) -> bytes:
     """Bulk Stringをエンコードする"""
     if value is None:
         # Null値
@@ -434,7 +434,7 @@ encode_bulk_string("こんにちは")  # 日本語（15バイト）
 #### 5. Arrayのエンコード
 
 ```python
-def encode_array(items: list | None) -> bytes:
+def encode_array(self, items: list | None) -> bytes:
     """Arrayをエンコード"""
     if items is None:
         # Null Array
@@ -445,7 +445,7 @@ def encode_array(items: list | None) -> bytes:
 
     # 各要素をエンコード
     for item in items:
-        result += encode_response(item) # 後述
+        result += self.encode_response(item) # 後述
 
     return result
 ```
@@ -486,20 +486,21 @@ class Array:
     """Array型を表すラッパー (*)"""
     items: list | None  # Noneの場合はNull Array
 
-def encode_response(result) -> bytes:
-    """応答を適切な形式でエンコードする"""
-    if isinstance(result, SimpleString):
-        return encode_simple_string(result.value)
-    elif isinstance(result, RedisError):
-        return encode_error(result.value)
-    elif isinstance(result, Integer):
-        return encode_integer(result.value)
-    elif isinstance(result, BulkString):
-        return encode_bulk_string(result.value)
-    elif isinstance(result, Array):
-        return encode_array(result.items)
-    else:
-        raise ValueError(f"Unsupported type: {type(result)}")
+class RESPParser:
+    def encode_response(self, result) -> bytes:
+        """応答を適切な形式でエンコードする"""
+        if isinstance(result, SimpleString):
+            return self.encode_simple_string(result.value)
+        elif isinstance(result, RedisError):
+            return self.encode_error(result.value)
+        elif isinstance(result, Integer):
+            return self.encode_integer(result.value)
+        elif isinstance(result, BulkString):
+            return self.encode_bulk_string(result.value)
+        elif isinstance(result, Array):
+            return self.encode_array(result.items)
+        else:
+            raise ValueError(f"Unsupported type: {type(result)}")
 
 # 例
 encode_response(SimpleString("OK"))              # → b'+OK\r\n'
