@@ -86,7 +86,7 @@ source .venv/bin/activate  # Windows の場合は .\.venv\Scripts\Activate.ps1
 python --version
 ```
 
-`uv run` を使用いただくことも可能です。以降の説明では、仮想環境をactivateした状態でのコマンド例を示します。
+`uv run` を使用いただくことも可能です。以降の説明および[docs](docs/)内部の資料では、仮想環境をactivateした状態でのコマンド例を示します。
 
 ### 2. 学習開始
 
@@ -109,23 +109,14 @@ pytest tests/test_protocol.py -v
 python -m mini_redis
 ```
 
-## 実装コマンド
-
-- `PING`: 接続確認
-- `GET <key>`: 値の取得
-- `SET <key> <value>`: 値の設定
-- `INCR <key>`: 値を1増加
-- `EXPIRE <key> <seconds>`: 有効期限の設定
-- `TTL <key>`: 残り有効秒数の取得
-
 ## ワークショップの流れ
 
-本ワークショップは、講義資料を順番に読みながら実装を進める形式です（合計90〜100分）：
+本ワークショップは、講義資料を順番に読みながら実装を進める形式です（合計90分）：
 
 1. **[導入](docs/lectures/00-introduction.md)** (5分) - Redis基礎、RESP入門、環境セットアップ
 2. **[TCPサーバ](docs/lectures/01-tcp-server.md)** (15分) - asyncioによるネットワーク層
 3. **[RESPプロトコル](docs/lectures/02-protocol-parsing.md)** (15分) - パース・エンコード機能
-4. **[コマンド実装](docs/lectures/03-commands.md)** (35分) - ストレージ層とコマンド実行層
+4. **[コマンド実装](docs/lectures/03-commands.md)** (25分) - ストレージ層とコマンド実行層
 5. **[有効期限管理](docs/lectures/04-expiry.md)** (20分) - Passive + Active Expiry
 6. **[統合テストとまとめ](docs/lectures/05-summary.md)** (10分) - 動作確認と発展課題
 
@@ -183,25 +174,7 @@ ruff format .
 
 ## トラブルシューティング
 
-実装中に詰まった場合：
-
-1. **各講義資料の実装ガイド**の「よくある間違いと対処法」セクションを確認
-2. **テストコード**で期待される動作を確認
-3. **[solutions/](solutions/)** ディレクトリの完成版コードを参照
-
-各講義資料には、詳細なデバッグのヒントとよくある間違いが記載されています。
-
-## 発展課題
-
-基本実装が完了したら、以下に挑戦してみましょう：
-
-- **基本コマンド拡張**: DEL/EXISTS/EXPIRETIME
-- **複雑なデータ構造**: List/Hash/Set/Sorted Set
-- **データ永続化**: RDB/AOFフォーマット
-- **Pub/Sub機能**: PUBLISH/SUBSCRIBE/UNSUBSCRIBE
-- **トランザクション**: MULTI/EXEC/WATCH
-
-詳細は [docs/lectures/05-summary.md](docs/lectures/05-summary.md) を参照してください。
+実装中に詰まった場合は、[テストコード](tests/)を参照して期待される動作を確認してください。また、[solutions/](solutions/)ディレクトリには完成版コードが含まれています。
 
 ## ライセンス
 
