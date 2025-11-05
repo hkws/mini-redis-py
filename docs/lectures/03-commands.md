@@ -378,42 +378,41 @@ Redisのエラーメッセージは、以下の形式に従います：
 [01-tcp-server.md](01-tcp-server.md) では、server.pyにエコーサーバーを実装しました。クライアントハンドラにコマンド実行とエラーハンドリングを組み込むことで、サービスとして機能させます。
 
 ```python
-async def handle_client(reader: StreamReader, writer: StreamWriter) -> None:
-    parser = RESPParser()
-    commands = Commands(storage, expiry)
+async def handle(self, reader: StreamReader, writer: StreamWriter) -> None:
+
+    addr = writer.get_extra_info("peername")
+    logger.info(f"Client connected: {addr}")
 
     try:
         while True:
             # コマンドをパース
-            command = await parser.parse_command(reader)
+            command = await self._parser.parse_command(reader)
 
             try:
                 # コマンドを実行（型ラッパーが返ってくる）
-                result = await commands.execute(command)
+                result = await self._handler.execute(command)
 
                 # 応答をエンコード（型ラッパーに基づいて適切な形式に変換）
-                response = encode_response(result)
+                response = self._parser.encode_response(result)
 
             except CommandError as e:
                 # コマンド実行エラー（RedisErrorでラップしてエンコード）
-                response = encode_response(RedisError(str(e)))
+                response = self._parser.encode_response(RedisError(str(e)))
 
             except Exception as e:
                 # 予期しないエラー
                 logger.exception("Unexpected error")
-                response = encode_response(RedisError("ERR internal server error"))
+                response = self._parser.encode_response(RedisError("ERR internal server error"))
 
             # 応答を送信
             writer.write(response)
             await writer.drain()
 
-    except asyncio.IncompleteReadError:
-        # クライアント切断
-        pass
-
     finally:
+        # 必ずクリーンアップ
         writer.close()
         await writer.wait_closed()
+        logger.info(f"Connection closed: {addr}")
 ```
 
 ## 実装ガイド（ハンズオン）
