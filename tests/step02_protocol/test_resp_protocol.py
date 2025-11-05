@@ -106,6 +106,87 @@ class TestStep02RESPEncoder:
         # 複数行を含む文字列（バイナリセーフ）
         assert parser.encode_bulk_string("foo\r\nbar") == b"$8\r\nfoo\r\nbar\r\n"
 
+    def test_encode_array(self) -> None:
+        """Array形式のエンコードを検証.
+
+        形式: *{要素数}\\r\\n{要素1}{要素2}...
+
+        検証内容:
+        - 空配列（*0\\r\\n）
+        - Simple Stringの配列
+        - Bulk Stringの配列
+        - 混合型の配列
+        - Null配列（*-1\\r\\n）
+        """
+        from mini_redis.protocol import SimpleString, BulkString, Integer
+
+        parser = RESPParser()
+
+        # 空配列
+        assert parser.encode_array([]) == b"*0\r\n"
+
+        # Simple Stringの配列
+        items = [SimpleString("OK"), SimpleString("PONG")]
+        expected = b"*2\r\n+OK\r\n+PONG\r\n"
+        assert parser.encode_array(items) == expected
+
+        # Bulk Stringの配列
+        items = [BulkString("foo"), BulkString("bar"), BulkString("baz")]
+        expected = b"*3\r\n$3\r\nfoo\r\n$3\r\nbar\r\n$3\r\nbaz\r\n"
+        assert parser.encode_array(items) == expected
+
+        # 混合型の配列（Simple String, Bulk String, Integer）
+        items = [SimpleString("OK"), BulkString("hello"), Integer(42)]
+        expected = b"*3\r\n+OK\r\n$5\r\nhello\r\n:42\r\n"
+        assert parser.encode_array(items) == expected
+
+        # Null Array
+        assert parser.encode_array(None) == b"*-1\r\n"
+
+    def test_encode_response(self) -> None:
+        """encode_responseで各型が適切にエンコードされることを検証.
+
+        検証内容:
+        - SimpleString型
+        - RedisError型
+        - Integer型
+        - BulkString型
+        - Array型
+        - サポートされていない型でエラー
+        """
+        from mini_redis.protocol import SimpleString, RedisError, Integer, BulkString, Array
+
+        parser = RESPParser()
+
+        # SimpleString
+        result = SimpleString("OK")
+        assert parser.encode_response(result) == b"+OK\r\n"
+
+        # RedisError
+        result = RedisError("ERR unknown command")
+        assert parser.encode_response(result) == b"-ERR unknown command\r\n"
+
+        # Integer
+        result = Integer(42)
+        assert parser.encode_response(result) == b":42\r\n"
+
+        # BulkString
+        result = BulkString("hello")
+        assert parser.encode_response(result) == b"$5\r\nhello\r\n"
+
+        # BulkString (Null)
+        result = BulkString(None)
+        assert parser.encode_response(result) == b"$-1\r\n"
+
+        # Array
+        result = Array([SimpleString("OK"), Integer(1)])
+        assert parser.encode_response(result) == b"*2\r\n+OK\r\n:1\r\n"
+
+        # サポートされていない型
+        with pytest.raises(ValueError) as exc_info:
+            parser.encode_response("invalid")
+        assert "Unsupported type" in str(exc_info.value)
+
 
 class TestStep02RESPParser:
     """Step 02: RESPパーシングのテスト."""
