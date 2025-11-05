@@ -201,6 +201,8 @@ PING\r
 
 ### セットアップ
 
+README.mdのクイックスタートと重複があります。適宜読み飛ばしてください。
+
 ```bash
 # リポジトリをクローン（既にクローン済みの場合はスキップ）
 git clone https://github.com/hkws/mini-redis-py.git
@@ -223,7 +225,7 @@ python --version
 pytest
 ```
 
-**注意**: 最初はすべてのテストが `NotImplementedError` や `ConnectionRefusedError` で失敗します。これは正常です。実装を進めるにつれて、テストが通るようになります。
+最初はすべてのテストが `NotImplementedError` や `ConnectionRefusedError` で失敗します。これは正常です。実装を進めるにつれて、テストが通るようになります。
 
 ### 完成イメージを確認
 
@@ -234,14 +236,13 @@ pytest
 python -m solutions.mini_redis
 ```
 
-別のターミナルで`redis-cli`を使って接続します：
+別のターミナルで`redis-cli`を使って接続します。
 
 !!! note "redis-cli の準備"
     - macOS: `brew install redis`（`redis-cli` がインストールされます）
-    - Debian/Ubuntu: `sudo apt-get install redis-tools`
     - Windows (Chocolatey): `choco install redis-64`
-    - Docker を利用する場合: `docker run --rm -it redis:7-alpine redis-cli -h host.docker.internal -p 16379`
-    - それでも CLI が用意できない場合は、`pip install redis` で Python 用クライアントを導入し、`python - <<'PY'` などで簡単な接続スクリプトを実行できます。
+
+完成版サーバは、接続先ポートが `16379` であることに注意してください。これは、みなさんが実装するサーバとポート番号を重複させないためです。
 
 ```bash
 # ターミナル2: redis-cliで接続
