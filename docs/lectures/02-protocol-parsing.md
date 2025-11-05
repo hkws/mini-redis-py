@@ -211,7 +211,15 @@ b'*0\r\n'  # → []
 b'*-1\r\n'  # → None
 ```
 
-## RESPのパース
+!!! note パースとエンコードでの型の扱い
+    **パース時**（クライアントからのメッセージの受信時）は、上記のようにPythonの基本型（`str`、`int`、`list`、`None`）で表現できます。
+
+    **エンコード時**（クライアントへのメッセージ送信時）は、Simple StringとBulk String、ErrorとSimple Stringなどを区別する必要があります。これは、Pythonの基本型だけでは区別できないため、後述するように型ラッパークラスを使用します。
+
+    詳しくは「[5. Redisサーバーからのレスポンスのエンコード](#5-redisサーバーからのレスポンスのエンコード)」を参照してください。
+
+
+## RESPのパース実装
 
 ### コマンドパースの手順
 
@@ -350,7 +358,7 @@ class RESPParser:
         return data[:-2].decode('utf-8')
 ```
 
-## RESPのエンコード
+## RESPのエンコード実装
 
 ### エンコードのパターン
 
@@ -423,30 +431,120 @@ encode_bulk_string("こんにちは")  # 日本語（15バイト）
 # → b'$15\r\n\xe3\x81\x93\xe3\x82\x93\xe3\x81\xab\xe3\x81\xa1\xe3\x81\xaf\r\n'
 ```
 
-#### 5. Redisサーバーからのレスポンスのエンコード
-
-複数の型を自動判別してエンコードする
+#### 5. Arrayのエンコード
 
 ```python
-def encode_response(value: str | int | None) -> bytes:
+def encode_array(items: list | None) -> bytes:
+    """Arrayをエンコード"""
+    if items is None:
+        # Null Array
+        return b'*-1\r\n'
+
+    # 要素数
+    result = f"*{len(items)}\r\n".encode('utf-8')
+
+    # 各要素をエンコード
+    for item in items:
+        result += encode_response(item) # 後述
+
+    return result
+```
+
+#### 5. Redisサーバーからのレスポンスのエンコード
+
+前述の通り、str, intのようなPythonの基本型だけでは、RESPデータ型を区別できません。例えば、Simple Stringの"OK"とBulk Stringの"OK"は同じPythonの`str`型ですが、RESPでは異なる型です。
+
+そこで、RESPの5つのデータ型すべてに対応する型ラッパーを定義します。コマンド実装では、これらの型ラッパーを使って応答を返すようにし、、エンコード関数では型ラッパーに基づいて適切なエンコード関数を呼び出します。
+
+以下は、型ラッパーおよびエンコード関数の実装例です。
+
+```python
+from dataclasses import dataclass
+
+@dataclass
+class SimpleString:
+    """Simple String型を表すラッパー (+)"""
+    value: str
+
+@dataclass
+class RedisError:
+    """Error型を表すラッパー (-)"""
+    value: str
+
+@dataclass
+class Integer:
+    """Integer型を表すラッパー (:)"""
+    value: int
+
+@dataclass
+class BulkString:
+    """Bulk String型を表すラッパー ($)"""
+    value: str | None
+
+@dataclass
+class Array:
+    """Array型を表すラッパー (*)"""
+    items: list | None  # Noneの場合はNull Array
+
+def encode_response(result) -> bytes:
     """応答を適切な形式でエンコードする"""
-    if value is None:
-        # Null Bulk String
-        return encode_bulk_string(None)
-    elif isinstance(value, int):
-        # Integer
-        return encode_integer(value)
-    elif isinstance(value, str):
-        # Bulk String
-        return encode_bulk_string(value)
+    if isinstance(result, SimpleString):
+        return encode_simple_string(result.value)
+    elif isinstance(result, RedisError):
+        return encode_error(result.value)
+    elif isinstance(result, Integer):
+        return encode_integer(result.value)
+    elif isinstance(result, BulkString):
+        return encode_bulk_string(result.value)
+    elif isinstance(result, Array):
+        return encode_array(result.items)
     else:
-        raise ValueError(f"Unsupported type: {type(value)}")
+        raise ValueError(f"Unsupported type: {type(result)}")
 
 # 例
-encode_response("hello")   # → b'$5\r\nhello\r\n'
-encode_response(42)        # → b':42\r\n'
-encode_response(None)      # → b'$-1\r\n'
+encode_response(SimpleString("OK"))              # → b'+OK\r\n'
+encode_response(RedisError("ERR unknown"))       # → b'-ERR unknown\r\n'
+encode_response(Integer(42))                     # → b':42\r\n'
+encode_response(BulkString("hello"))             # → b'$5\r\nhello\r\n'
+encode_response(BulkString(None))                # → b'$-1\r\n'
+encode_response(Array([
+    BulkString("foo"),
+    BulkString("bar")
+]))                                              # → b'*2\r\n$3\r\nfoo\r\n$3\r\nbar\r\n'
+encode_response(Array(None))                     # → b'*-1\r\n'
 ```
+
+**使用例（コマンド実装）**:
+
+```python
+# PINGコマンド → Simple Stringで応答
+return SimpleString("PONG")
+
+# GETコマンド → Bulk Stringで応答
+value = storage.get(key)
+return BulkString(value)  # valueがNoneでもOK
+
+# INCRコマンド → Integerで応答
+new_value = storage.incr(key)
+return Integer(new_value)
+
+# （本ワークショップでは実装対象外）LRANGEコマンド → Arrayで応答
+values = storage.lrange(key, start, stop)
+return Array([BulkString(v) for v in values])
+
+# エラー応答
+return RedisError("ERR unknown command")
+```
+
+**型の使い分け**:
+
+| RESP型 | ラッパークラス | 使用場面 |
+|--------|--------------|----------|
+| Simple String | `SimpleString` | 短い成功メッセージ（OK、PONGなど） |
+| Error | `RedisError` | エラー応答 |
+| Integer | `Integer` | 数値応答（INCR、TTL、EXPIREなど） |
+| Bulk String | `BulkString` | 文字列データ（GET、バイナリデータ） |
+| Array | `Array` | 複数値の応答（KEYS、LRANGEなど） |
 
 
 ## 実装ガイド（ハンズオン）
@@ -465,6 +563,8 @@ encode_response(None)      # → b'$-1\r\n'
    - `encode_integer()`: `:42\r\n`
    - `encode_bulk_string()`: `$3\r\nfoo\r\n` または `$-1\r\n`
    - `encode_error()`: `-ERR message\r\n`
+   - `encode_array()`: `*N\r\n{要素1}{要素2}...`
+   - `encode_response()`: 型ラッパーに基づいて適切なエンコード関数を呼び出す
 
 ### 実装のポイント
 

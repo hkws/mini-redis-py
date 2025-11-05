@@ -33,14 +33,14 @@ class RESPParser:
         Raises:
             RESPProtocolError: 不正なRESP形式
         """
-        # TODO: ステップ1を実装してください
+        # TODO: parse_command()を実装してください
         # 1-1. reader.readuntil(b'\r\n')で最初の行を読み取る
         # 1-2. 末尾の\r\nを削除
         # 1-3. 最初の文字が'*'であることを確認（でなければRESPProtocolErrorをraise）
         # 1-4. 残りの部分をint()で整数に変換して配列の要素数を取得
         #      （変換エラーの場合はRESPProtocolErrorをraise）
 
-        # TODO: ステップ2を実装してください
+        # TODO: Bulk Stringのパースを実装してください
         # 2-1. 空のリストを作成: result = []
         # 2-2. 配列の要素数分ループ
         #   2-2-1. Bulk Stringの長さを読み取る
@@ -106,9 +106,43 @@ class RESPParser:
 
         # 2-1. value.encode()でUTF-8バイト列に変換
         # 2-2. len(value_bytes)でバイト数を取得
-        # 2-3. f"${length}\r\n".encode() + value_bytes + b"\r\n" を返す
+        # 2-3. $<length>\r\n<data>\r\n を返す
 
         raise NotImplementedError("encode_bulk_string()を実装してください")
+
+    def encode_array(self, values: list[str] | None) -> bytes:
+        """Arrayをエンコード.
+
+        Args:
+            values: エンコードする文字列のリスト（Noneの場合はNull Array）
+
+        Returns:
+            RESP Array形式（例: *2\\r\\n$3\\r\\nfoo\\r\\n$3\\r\\nbar\\r\\n または *-1\\r\\n）
+
+        例: ["foo", "bar"] → b'*2\\r\\n$3\\r\\nfoo\\r\\n$3\\r\\nbar\\r\\n'
+        例: None → b'*-1\\r\\n'
+
+        """
+        raise NotImplementedError("encode_array()を実装してください")
+
+    def encode_response(self, response: str | int | list[str] | None) -> bytes:
+        """レスポンスをRESP形式にエンコード.
+
+        Args:
+            response: エンコードするレスポンス
+
+        Returns:
+            適切なRESP形式のバイト列
+
+        例:
+            "OK" → b'+OK\\r\\n'
+            42 → b':42\\r\\n'
+            "foo" → b'$3\\r\\nfoo\\r\\n'
+            ["foo", "bar"] → b'*2\\r\\n$3\\r\\nfoo\\r\\n$3\\r\\nbar\\r\\n'
+            None → b'$-1\\r\\n'
+
+        """
+        raise NotImplementedError("encode_response()を実装してください")
 
 
 class RESPProtocolError(Exception):
