@@ -429,6 +429,7 @@ async def handle_client(reader: StreamReader, writer: StreamWriter) -> None:
    - `get()`: キーの値を取得
    - `set()`: キーに値を設定
    - `delete()`: キーを削除
+   - `exists()`: キーの存在確認
 
 #### テストで確認
 
