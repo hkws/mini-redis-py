@@ -203,7 +203,7 @@ PING\r
 
 ```bash
 # リポジトリをクローン（既にクローン済みの場合はスキップ）
-git clone <repository-url>
+git clone https://github.com/hkws/mini-redis-py.git
 cd mini-redis-py
 
 # uv をまだ導入していない場合

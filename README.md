@@ -69,7 +69,7 @@ mini-redis-py/
 
 ```bash
 # リポジトリをクローン（任意のディレクトリで）
-git clone <repository-url>
+git clone https://github.com/hkws/mini-redis-py.git
 cd mini-redis-py
 
 # まだ uv を導入していない場合は pipx などでインストール
