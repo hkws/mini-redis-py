@@ -5,7 +5,7 @@ description = "A minimal Redis clone in Python for learning asyncio and RESP pro
 requires-python = ">=3.12"
 dependencies = []
 readme = "README.md"
-license = {text = "MIT"}
+license = "MIT"
 authors = [
     {name = "Mini-Redis Workshop", email = "workshop@example.com"}
 ]
@@ -22,6 +22,11 @@ dev = [
 [build-system]
 requires = ["setuptools>=68.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["mini_redis*"]
+exclude = ["solutions*", "tests*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

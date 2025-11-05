@@ -58,18 +58,35 @@ mini-redis-py/
 
 詳細なアーキテクチャは [docs/architecture.md](docs/architecture.md) を参照してください。
 
+## 事前準備
+
+- **uv のインストール**: 未導入の場合は `pipx install uv` などでセットアップし、`uv --version` で動作を確認してください。
+- **`.python-version` に従った仮想環境の作成**: 本リポジトリでは `3.12.11` を指定しています。`uv python install "$(cat .python-version)"` → `uv sync --extra dev` を実行すると、`.venv` が自動生成され依存関係が同期されます。
+
 ## クイックスタート
 
 ### 1. セットアップ
 
 ```bash
-# リポジトリをクローン
+# リポジトリをクローン（任意のディレクトリで）
 git clone <repository-url>
 cd mini-redis-py
 
-# 開発用ツールを含めてインストール
-pip install -e ".[dev]"
+# まだ uv を導入していない場合は pipx などでインストール
+pipx install uv
+
+# プロジェクト用の Python ( .python-version に基づき 3.12.11 ) を取得し、依存関係を同期 (.venv が自動生成されます)
+uv python install "$(cat .python-version)"
+uv sync --extra dev
+
+# 作成された .venv を有効化
+source .venv/bin/activate  # Windows の場合は .\.venv\Scripts\Activate.ps1
+
+# バージョン確認（任意）
+python --version
 ```
+
+`uv run` を使用いただくことも可能です。以降の説明では、仮想環境をactivateした状態でのコマンド例を示します。
 
 ### 2. 学習開始
 

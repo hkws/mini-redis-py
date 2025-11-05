@@ -193,6 +193,12 @@ PING\r
 
 ここからは、実際に手を動かしてMini-Redisを実装していきます。まずは環境をセットアップしましょう。
 
+### 事前準備
+
+- **uv のインストール**: 未導入の場合は `pipx install uv` などでセットアップし、`uv --version` で動作を確認してください。
+- **`.python-version` に従う Python の取得と仮想環境の作成**: 本リポジトリでは `3.12.11` を指定しています。`uv python install "$(cat .python-version)"` → `uv sync --extra dev` を実行すると、`.venv` が自動生成され依存関係が同期されます。
+- リポジトリには `uv.lock` が含まれているので、`uv sync` を用いればロックされたバージョンで環境を再現できます。
+
 ### セットアップ
 
 ```bash
@@ -200,8 +206,18 @@ PING\r
 git clone <repository-url>
 cd mini-redis-py
 
-# 開発用ツールを含めてインストール
-pip install -e ".[dev]"
+# uv をまだ導入していない場合
+pipx install uv
+
+# プロジェクト用の Python ( .python-version に基づき 3.12.11 ) を取得し、依存を同期 (.venv が自動生成されます)
+uv python install "$(cat .python-version)"
+uv sync --extra dev
+
+# 作成された .venv を有効化
+source .venv/bin/activate  # Windows の場合は .\.venv\Scripts\Activate.ps1
+
+# バージョン確認（任意）
+python --version
 
 # テストが実行できることを確認（最初は全て失敗するのが正常）
 pytest
@@ -219,6 +235,13 @@ python -m solutions.mini_redis
 ```
 
 別のターミナルで`redis-cli`を使って接続します：
+
+!!! note "redis-cli の準備"
+    - macOS: `brew install redis`（`redis-cli` がインストールされます）
+    - Debian/Ubuntu: `sudo apt-get install redis-tools`
+    - Windows (Chocolatey): `choco install redis-64`
+    - Docker を利用する場合: `docker run --rm -it redis:7-alpine redis-cli -h host.docker.internal -p 16379`
+    - それでも CLI が用意できない場合は、`pip install redis` で Python 用クライアントを導入し、`python - <<'PY'` などで簡単な接続スクリプトを実行できます。
 
 ```bash
 # ターミナル2: redis-cliで接続
