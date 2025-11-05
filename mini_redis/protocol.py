@@ -43,10 +43,11 @@ class RESPParser:
         # TODO: Bulk Stringのパースを実装してください
         # 2-1. 空のリストを作成: result = []
         # 2-2. 配列の要素数分ループ
-        #   2-2-1. Bulk Stringの長さを読み取る
-        #   2-2-2. 指定された長さ分のデータを読み取る
-        #   2-2-3. 終端の\r\nを読み取って検証
-        #   2-2-4. データをUTF-8でデコードしてリストに追加
+        #   2-2-1. Bulk Stringの長さ行（$N\r\n）を読み取る
+        #   2-2-2. 一文字目を見てBulk Stringかチェック
+        #   2-2-3. 指定された長さ分のデータを読み取る（\r\nに注意）: reader.readexactly(length + 2)
+        #   2-2-4. 終端が\r\nであることを検証
+        #   2-2-5. データをUTF-8でデコード
         # 2-3. resultを返す
         raise NotImplementedError("parse_command()を実装してください")
 
