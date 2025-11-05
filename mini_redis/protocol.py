@@ -6,8 +6,34 @@
 """
 
 from asyncio import StreamReader
+from dataclasses import dataclass
 from typing import Optional
 
+
+@dataclass
+class SimpleString:
+    """Simple String型を表すラッパー (+)"""
+    value: str
+
+@dataclass
+class RedisError:
+    """Error型を表すラッパー (-)"""
+    value: str
+
+@dataclass
+class Integer:
+    """Integer型を表すラッパー (:)"""
+    value: int
+
+@dataclass
+class BulkString:
+    """Bulk String型を表すラッパー ($)"""
+    value: str | None
+
+@dataclass
+class Array:
+    """Array型を表すラッパー (*)"""
+    items: list | None  # Noneの場合はNull Array
 
 class RESPParser:
     """RESPプロトコルのパーサ・エンコーダ.

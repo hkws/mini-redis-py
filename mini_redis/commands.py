@@ -6,8 +6,7 @@
 """
 
 import time
-
-CommandResult = str | int | None
+from mini_redis.protocol import SimpleString, Integer, BulkString, RedisError, Array
 
 
 class CommandHandler:
@@ -35,7 +34,7 @@ class CommandHandler:
         self._store = store
         self._expiry = expiry
 
-    async def execute(self, command: list[str]) -> CommandResult:
+    async def execute(self, command: list[str]) -> SimpleString | BulkString | Integer | RedisError | Array:
         """コマンドを実行.
 
         Args:
@@ -48,47 +47,40 @@ class CommandHandler:
             CommandError: コマンド実行エラー
         """
         # 1. 空コマンドのチェック
-        #    commandが空の場合、CommandError("ERR empty command"
+        #    commandが空の場合、CommandError("ERR empty command")
 
         # 2  コマンド名と引数の取得
         # 2.1 command[0]をコマンド名として取得
         # 2.2 .upper()で大文字に変換（PINGもpingも同じ扱い）
-        # 2.3 command[1:]を引数リストとして取得
+        # 2.3 command[1:]を引数リスト(args)として取得
 
         # 3 コマンドのルーティング
-        # 1. PING:
-        #    - 引数が0個であることを確認（でなければCommandError）
-        #    - execute_ping()を呼び出す
+        # 1. コマンド名がPING:
+        #    - execute_ping(args)を呼び出す
 
-        # 2. GET:
-        #    - 引数が1個であることを確認（でなければCommandError）
-        #    - execute_get(args[0])を呼び出す
+        # 2. コマンド名がGET:
+        #    - execute_get(args)を呼び出す
 
-        # 3. SET:
-        #    - 引数が2個であることを確認（でなければCommandError）
-        #    - execute_set(args[0], args[1])を呼び出す
+        # 3. コマンド名がSET:
+        #    - execute_set(args)を呼び出す
 
-        # 4. INCR:
-        #    - 引数が1個であることを確認（でなければCommandError）
-        #    - execute_incr(args[0])を呼び出す
+        # 4. コマンド名がINCR:
+        #    - execute_incr(args)を呼び出す
 
-        # 5. EXPIRE:
+        # 5. コマンド名がEXPIRE:
         #    - 04-expiry.mdで実装
-        #    - 引数が2個であることを確認（でなければCommandError）
-        #    - args[1]をint()で整数に変換（ValueErrorの場合はCommandError）
-        #    - execute_expire(args[0], seconds)を呼び出す
+        #    - execute_expire(args)を呼び出す
 
-        # 6. TTL:
+        # 6. コマンド名がTTL:
         #    - 04-expiry.mdで実装
-        #    - 引数が1個であることを確認（でなければCommandError）
-        #    - execute_ttl(args[0])を呼び出す
+        #    - execute_ttl(args)を呼び出す
 
         # 7. その他:
         #    - CommandError(f"ERR unknown command '{cmd_name}'")をraise
 
         raise NotImplementedError("execute()を実装してください")
 
-    async def execute_ping(self, msg: str | None = None) -> str:
+    async def execute_ping(self, args: list[str]) -> SimpleString | BulkString:
         """PING: "PONG"または入力された文字列を返す.
 
         Returns:
@@ -97,7 +89,7 @@ class CommandHandler:
         """
         raise NotImplementedError("execute_ping()を実装してください")
 
-    async def execute_get(self, key: str) -> str | None:
+    async def execute_get(self, args: list[str]) -> BulkString:
         """GET: キーの値を取得.
 
         Args:
@@ -111,7 +103,7 @@ class CommandHandler:
         # 2. self._store.get(key)でキーの値を取得し返却
         raise NotImplementedError("execute_get()を実装してください")
 
-    async def execute_set(self, key: str, value: str) -> str:
+    async def execute_set(self, args: list[str]) -> SimpleString:
         """SET: キーに値を設定.
 
         Args:
@@ -137,7 +129,7 @@ class CommandHandler:
         # 2. "OK"を返す
         raise NotImplementedError("execute_set()を実装してください")
 
-    async def execute_incr(self, key: str) -> int:
+    async def execute_incr(self, args: list[str]) -> Integer:
         """INCR: キーの値を1増加.
 
         Args:
@@ -158,7 +150,7 @@ class CommandHandler:
 
         raise NotImplementedError("execute_incr()を実装してください")
 
-    async def execute_expire(self, key: str, seconds: int) -> int:
+    async def execute_expire(self, args: list[str]) -> Integer:
         """EXPIRE: キーに有効期限を設定.
 
         Args:
@@ -175,7 +167,7 @@ class CommandHandler:
         # 3. 有効期限を設定
         raise NotImplementedError("execute_expire()を実装してください")
 
-    async def execute_ttl(self, key: str) -> int:
+    async def execute_ttl(self, args: list[str]) -> Integer:
         """TTL: キーの残り有効秒数を取得.
 
         Args:

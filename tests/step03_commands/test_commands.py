@@ -102,7 +102,7 @@ class TestStep03PingCommand:
         store = DataStore()
         handler = CommandHandler(store, None)
 
-        result = await handler.execute_ping()
+        result = await handler.execute_ping([])
         assert result == "PONG"
 
     @pytest.mark.asyncio
@@ -120,7 +120,7 @@ class TestStep03PingCommand:
         store = DataStore()
         handler = CommandHandler(store, None)
 
-        result = await handler.execute_ping("Hello")
+        result = await handler.execute_ping(["Hello"])
         assert result == "Hello"
 
 
@@ -141,7 +141,7 @@ class TestStep03GetCommand:
         handler = CommandHandler(store, None)
         store.set("key1", "value1")
 
-        result = await handler.execute_get("key1")
+        result = await handler.execute_get(["key1"])
         assert result == "value1"
 
     @pytest.mark.asyncio
@@ -155,7 +155,7 @@ class TestStep03GetCommand:
         store = DataStore()
         handler = CommandHandler(store, None)
 
-        result = await handler.execute_get("nonexistent")
+        result = await handler.execute_get(["nonexistent"])
         assert result is None
 
 
@@ -174,7 +174,7 @@ class TestStep03SetCommand:
         store = DataStore()
         handler = CommandHandler(store, None)
 
-        result = await handler.execute_set("key1", "value1")
+        result = await handler.execute_set(["key1", "value1"])
         assert result == "OK"
         assert store.get("key1") == "value1"
 
@@ -190,7 +190,7 @@ class TestStep03SetCommand:
         handler = CommandHandler(store, None)
         store.set("key1", "old_value")
 
-        result = await handler.execute_set("key1", "new_value")
+        result = await handler.execute_set(["key1", "new_value"])
         assert result == "OK"
         assert store.get("key1") == "new_value"
 
