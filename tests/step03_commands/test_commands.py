@@ -18,6 +18,7 @@
 import pytest
 
 from mini_redis.commands import CommandError, CommandHandler
+from mini_redis.protocol import BulkString, Integer, SimpleString
 from mini_redis.storage import DataStore
 
 
@@ -38,7 +39,8 @@ class TestStep03CommandRouting:
 
         # PINGコマンド
         result = await handler.execute(["PING"])
-        assert result == "PONG"
+        assert isinstance(result, SimpleString)
+        assert result.value == "PONG"
 
     @pytest.mark.asyncio
     async def test_execute_handles_lowercase_commands(self) -> None:
@@ -52,7 +54,8 @@ class TestStep03CommandRouting:
         handler = CommandHandler(store, None)
 
         result = await handler.execute(["ping"])
-        assert result == "PONG"
+        assert isinstance(result, SimpleString)
+        assert result.value == "PONG"
 
     @pytest.mark.asyncio
     async def test_execute_raises_error_for_unknown_command(self) -> None:
@@ -103,7 +106,8 @@ class TestStep03PingCommand:
         handler = CommandHandler(store, None)
 
         result = await handler.execute_ping([])
-        assert result == "PONG"
+        assert isinstance(result, SimpleString)
+        assert result.value == "PONG"
 
     @pytest.mark.asyncio
     async def test_ping_str_returns_str(self) -> None:
@@ -115,13 +119,14 @@ class TestStep03PingCommand:
 
         検証内容:
         - 戻り値の型: str
-        - Simple Stringとしてエンコードされる
+        - Bulk Stringとしてエンコードされる
         """
         store = DataStore()
         handler = CommandHandler(store, None)
 
         result = await handler.execute_ping(["Hello"])
-        assert result == "Hello"
+        assert isinstance(result, BulkString)
+        assert result.value == "Hello"
 
 
 class TestStep03GetCommand:
@@ -142,7 +147,8 @@ class TestStep03GetCommand:
         store.set("key1", "value1")
 
         result = await handler.execute_get(["key1"])
-        assert result == "value1"
+        assert isinstance(result, BulkString)
+        assert result.value == "value1"
 
     @pytest.mark.asyncio
     async def test_get_returns_none_for_nonexistent_key(self) -> None:
@@ -156,7 +162,8 @@ class TestStep03GetCommand:
         handler = CommandHandler(store, None)
 
         result = await handler.execute_get(["nonexistent"])
-        assert result is None
+        assert isinstance(result, BulkString)
+        assert result.value is None
 
 
 class TestStep03SetCommand:
@@ -175,7 +182,8 @@ class TestStep03SetCommand:
         handler = CommandHandler(store, None)
 
         result = await handler.execute_set(["key1", "value1"])
-        assert result == "OK"
+        assert isinstance(result, SimpleString)
+        assert result.value == "OK"
         assert store.get("key1") == "value1"
 
     @pytest.mark.asyncio
@@ -191,7 +199,8 @@ class TestStep03SetCommand:
         store.set("key1", "old_value")
 
         result = await handler.execute_set(["key1", "new_value"])
-        assert result == "OK"
+        assert isinstance(result, SimpleString)
+        assert result.value == "OK"
         assert store.get("key1") == "new_value"
 
 
@@ -213,7 +222,8 @@ class TestStep03IncrCommand:
         handler = CommandHandler(store, None)
 
         result = await handler.execute_incr(["counter"])
-        assert result == 1
+        assert isinstance(result, Integer)
+        assert result.value == 1
         assert store.get("counter") == "1"
 
     @pytest.mark.asyncio
@@ -231,7 +241,8 @@ class TestStep03IncrCommand:
         store.set("counter", "5")
 
         result = await handler.execute_incr(["counter"])
-        assert result == 6
+        assert isinstance(result, Integer)
+        assert result.value == 6
         assert store.get("counter") == "6"
 
     @pytest.mark.asyncio
