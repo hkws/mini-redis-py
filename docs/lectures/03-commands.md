@@ -173,7 +173,7 @@ class Commands:
         else:
             raise CommandError(f"ERR unknown command '{cmd_name}'")
 
-    async def execute_ping(self, args: list[str]) -> SimpleString:
+    async def execute_ping(self, args: list[str]) -> SimpleString | BulkString:
         """PINGコマンドを実行"""
         # 実装...
         pass
