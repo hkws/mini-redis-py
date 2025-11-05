@@ -10,15 +10,22 @@
 
 RESPプロトコルのエンコード方法、そしてPythonの例外処理を理解していることを前提としています。
 
-## ストレージ操作
+## ストレージ操作（`storage.py`）
 
-コマンドの実装は`DataStore`（`mini_redis/storage.py`）に依存します。`DataStore`は値の保存と取得、削除といった最小限の責務だけを持ち、期限の判定や破棄は呼び出し側（`ExpiryManager`やコマンド実装）が担当するよう実装します。
+まず、値の入出力を行う `DataStore`（`mini_redis/storage.py`）を実装していきましょう。`DataStore`は値の保存と取得、削除といった最小限の責務だけを持つこととします。また、後の有効期限管理の実装のために、値とともに有効期限情報も保持できるようにします。
 
 ### DataStore全体の骨格
 
-`DataStore`は内部に`dict[str, StoreEntry]`を持ち、初期化時に空の辞書を生成するだけです。コマンド側からは非同期処理の中で呼び出されますが、ストレージ内では同期処理として完結しているため追加のロックやawaitは不要です。
+`DataStore`は内部に`dict[str, StoreEntry]`を持ち、初期化時に空の辞書を生成するだけです。`StoreEntry`は保存された値（`value`）と有効期限（`expiry_at`）を持ちます。コマンド側からは非同期処理の中で呼び出されますが、ストレージ内では同期処理として完結しているため追加のロックやawaitは不要です。
 
 ```python
+from dataclasses import dataclass, field
+
+@dataclass
+class StoreEntry:
+    value: str
+    expiry_at: float | None = field(default=None)
+
 class DataStore:
     def __init__(self) -> None:
         self._data: dict[str, StoreEntry] = {}
@@ -33,7 +40,7 @@ class DataStore:
         # ...
 ```
 
-この3メソッドが揃えば、GET/SET/DELETE（およびEXPIRE処理の一部）に必要な最小のストレージAPIが完成します。以降のコマンド実装は、（必要な場合は）期限チェック→`DataStore`操作→RESP変換という流れで組み立てていきます。
+この3メソッドが揃えば、GET/SET/DELETEに必要な最小のストレージAPIが完成します。以降、コマンドは（必要な場合は）期限チェック→`DataStore`操作→RESP変換という流れで実装していきます。
 
 ### get: 値を読み出す
 - 目的: キーに紐づく値を取得する  
@@ -59,7 +66,7 @@ def set(self, key: str, value: str) -> None:
 ### delete: 値を取り除く
 - 目的: 指定したキーを削除し、削除できたかどうかを返す  
 - 仕様: 削除できれば`True`、キーがなければ`False`  
-- 実装ポイント: `dict.pop()`を例外処理付きで使うと戻り値の制御が簡単。Passive Expiryで期限切れを検出した際にもこのメソッドを呼び出してキーを掃除する。
+- 実装ポイント: `dict.pop()`を例外処理付きで使うと戻り値の制御がしやすい。
 
 ```python
 def delete(self, key: str) -> bool:
@@ -71,9 +78,9 @@ def delete(self, key: str) -> bool:
 ```
 
 
-## コマンド実行
+## コマンド実行（`commands.py`）
 
-`commands.py` は、パースされたコマンドを受け取り、引数の数や型といった必要ば検証を行った後、そのコマンドに対応する処理を実行します。実行結果に応じて、適切なRESPデータ型で返却します。
+`commands.py` は、パースされたコマンドを受け取り、引数の数や型といった必要な検証を行った後、そのコマンドに対応する処理を実行します。実行結果に応じて、適切なRESPデータ型ラッパー（`SimpleString`、`BulkString`、`Integer`、`RedisError`、`Array`）で返却します。
 
 ### コマンド実行のフロー
 
@@ -131,13 +138,17 @@ graph TB
 
 ### 実装例
 
+実装例は以下のとおりです。ExpiryManagerは後のステップで実装しますが、ここではインターフェースだけを仮定しています。
+
 ```python
+from mini_redis.protocol import SimpleString, BulkString, Integer, RedisError, Array
+
 class Commands:
     def __init__(self, storage: Storage, expiry: ExpiryManager):
         self._store = storage
         self._expiry = expiry
 
-    async def execute(self, command: list[str]) -> str | int | None:
+    async def execute(self, command: list[str]) -> SimpleString | BulkString | Integer | RedisError | Array:
         """コマンドを実行する"""
         if not command:
             raise CommandError("ERR empty command")
@@ -162,7 +173,7 @@ class Commands:
         else:
             raise CommandError(f"ERR unknown command '{cmd_name}'")
 
-    async def execute_ping(self, args: list[str]) -> str:
+    async def execute_ping(self, args: list[str]) -> SimpleString:
         """PINGコマンドを実行"""
         # 実装...
         pass
@@ -183,14 +194,14 @@ class Commands:
 実装例:
 
 ```python
-async def execute_ping(self, args: list[str]) -> str:
+async def execute_ping(self, args: list[str]) -> SimpleString | BulkString:
     """PINGコマンドを実行"""
     if len(args) == 0:
-        # 引数なし: PONGを返す
-        return "PONG"
+        # 引数なし: PONGを返す（Simple String）
+        return SimpleString("PONG")
     elif len(args) == 1:
-        # 引数あり: メッセージをエコーバック
-        return args[0]
+        # 引数あり: メッセージをエコーバック（Bulk String）
+        return BulkString(args[0])
     else:
         # 引数が多すぎる
         raise CommandError("ERR wrong number of arguments for 'ping' command")
@@ -226,7 +237,7 @@ PONG
 実装例:
 
 ```python
-async def execute_get(self, args: list[str]) -> str | None:
+async def execute_get(self, args: list[str]) -> BulkString:
     """GETコマンドを実行"""
     # 引数検証
     if len(args) != 1:
@@ -236,11 +247,11 @@ async def execute_get(self, args: list[str]) -> str | None:
 
     # Passive Expiry: 期限切れチェック
     if self._expiry.check_and_remove_expired(key):
-        # 期限切れなので削除済み
-        return None
+        # 期限切れなので削除済み（Null Bulk String）
+        return BulkString(None)
 
-    # 値を取得
-    return self._store.get(key)
+    # 値を取得（BulkStringでラップ）
+    return BulkString(self._store.get(key))
 ```
 
 redis-cliでの実行例:
@@ -270,7 +281,7 @@ OK
 実装:
 
 ```python
-async def execute_set(self, args: list[str]) -> str:
+async def execute_set(self, args: list[str]) -> SimpleString:
     """SETコマンドを実行"""
     # 引数検証
     if len(args) != 2:
@@ -282,7 +293,7 @@ async def execute_set(self, args: list[str]) -> str:
     # 値を設定
     self._store.set(key, value)
 
-    return "OK"
+    return SimpleString("OK")
 ```
 
 redis-cliでの実行例:
@@ -318,7 +329,7 @@ OK
 実装例:
 
 ```python
-async def execute_incr(self, args: list[str]) -> int:
+async def execute_incr(self, args: list[str]) -> Integer:
     """INCRコマンドを実行"""
     # 引数検証
     if len(args) != 1:
@@ -330,7 +341,7 @@ async def execute_incr(self, args: list[str]) -> int:
     if self._expiry.check_and_remove_expired(key):
         # 期限切れなので、0から開始
         self._store.set(key, "1")
-        return 1
+        return Integer(1)
 
     # 現在の値を取得
     current = self._store.get(key)
@@ -338,7 +349,7 @@ async def execute_incr(self, args: list[str]) -> int:
     if current is None:
         # キーが存在しない: 0から開始
         self._store.set(key, "1")
-        return 1
+        return Integer(1)
 
     # 整数に変換を試みる
     try:
@@ -350,7 +361,7 @@ async def execute_incr(self, args: list[str]) -> int:
     new_value = value + 1
     self._store.set(key, str(new_value))
 
-    return new_value
+    return Integer(new_value)
 ```
 
 redis-cliでの実行例:
@@ -384,7 +395,7 @@ OK
 実装例:
 
 ```python
-async def execute_expire(self, args: list[str]) -> int:
+async def execute_expire(self, args: list[str]) -> Integer:
     """EXPIREコマンドを実行"""
     # 引数検証
     if len(args) != 2:
@@ -405,15 +416,15 @@ async def execute_expire(self, args: list[str]) -> int:
     # Passive Expiry: 期限切れチェック
     if self._expiry.check_and_remove_expired(key):
         # 期限切れなので存在しない
-        return 0
+        return Integer(0)
 
     # キーが存在するかチェック
     if self._store.get(key) is None:
-        return 0
+        return Integer(0)
 
     # 有効期限を設定
     self._store_.set_expiry(key, seconds)
-    return 1
+    return Integer(1)
 ```
 
 redis-cliでの実行例:
@@ -448,7 +459,7 @@ OK
 実装:
 
 ```python
-async def execute_ttl(self, args: list[str]) -> int:
+async def execute_ttl(self, args: list[str]) -> Integer:
     """TTLコマンドを実行"""
     # 引数検証
     if len(args) != 1:
@@ -459,22 +470,22 @@ async def execute_ttl(self, args: list[str]) -> int:
     # Passive Expiry: 期限切れチェック
     if self._expiry.check_and_remove_expired(key):
         # 期限切れなので存在しない
-        return -2
+        return Integer(-2)
 
     # キーが存在するかチェック
     if self._store.get(key) is None:
-        return -2
+        return Integer(-2)
 
     # 有効期限を取得
     ttl = self._store_.get_ttl(key)
 
     if ttl is None:
         # 有効期限が設定されていない
-        return -1
+        return Integer(-1)
 
     # 残り秒数を計算
     remaining = int(expiry_at - time.time())
-    return ttl
+    return Integer(ttl)
 ```
 
 redis-cliでの実行例:
@@ -538,20 +549,20 @@ async def handle_client(reader: StreamReader, writer: StreamWriter) -> None:
             command = await parser.parse_command(reader)
 
             try:
-                # コマンドを実行
+                # コマンドを実行（型ラッパーが返ってくる）
                 result = await commands.execute(command)
 
-                # 応答をエンコード
+                # 応答をエンコード（型ラッパーに基づいて適切な形式に変換）
                 response = encode_response(result)
 
             except CommandError as e:
-                # コマンド実行エラー
-                response = encode_error(str(e))
+                # コマンド実行エラー（RedisErrorでラップしてエンコード）
+                response = encode_response(RedisError(str(e)))
 
             except Exception as e:
                 # 予期しないエラー
                 logger.exception("Unexpected error")
-                response = encode_error("ERR internal server error")
+                response = encode_response(RedisError("ERR internal server error"))
 
             # 応答を送信
             writer.write(response)
@@ -614,11 +625,11 @@ pytest tests/step03_commands/test_storage.py -v
 **1. PINGコマンド**
 
 ```python
-async def execute_ping(self, args: list[str]) -> str:
+async def execute_ping(self, args: list[str]) -> SimpleString | BulkString:
     if len(args) == 0:
-        return "PONG"
+        return SimpleString("PONG")
     elif len(args) == 1:
-        return args[0]
+        return BulkString(args[0])
     else:
         raise CommandError("ERR wrong number of arguments for 'ping' command")
 ```
@@ -626,16 +637,16 @@ async def execute_ping(self, args: list[str]) -> str:
 **2. INCRコマンド（型エラー処理に注意）**
 
 ```python
-async def execute_incr(self, key: str) -> int:
+async def execute_incr(self, key: str) -> Integer:
     # Passive Expiryチェック
     if self._expiry.check_and_remove_expired(key):
         self._store.set(key, "1")
-        return 1
+        return Integer(1)
 
     current = self._store.get(key)
     if current is None:
         self._store.set(key, "1")
-        return 1
+        return Integer(1)
 
     # 整数変換を試みる
     try:
@@ -645,7 +656,7 @@ async def execute_incr(self, key: str) -> int:
 
     new_value = value + 1
     self._store.set(key, str(new_value))
-    return new_value
+    return Integer(new_value)
 ```
 
 #### よくある間違いと対処法
@@ -654,13 +665,13 @@ async def execute_incr(self, key: str) -> int:
 
 ```python
 # ❌ 間違い
-async def execute_get(self, key: str) -> str | None:
-    return self._store.get(key)  # 期限チェックなし
+async def execute_get(self, key: str) -> BulkString:
+    return BulkString(self._store.get(key))  # 期限チェックなし
 
 # ✅ 正しい
-async def execute_get(self, key: str) -> str | None:
+async def execute_get(self, key: str) -> BulkString:
     self._expiry.check_and_remove_expired(key)  # 期限チェック
-    return self._store.get(key)
+    return BulkString(self._store.get(key))
 ```
 
 **2. INCRコマンドの型エラー処理忘れ**
