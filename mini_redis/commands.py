@@ -164,7 +164,7 @@ class CommandHandler:
         """
         # 1. Passive expiryチェック
         # 2. キーの存在確認
-        # 3. 有効期限を設定
+        # 3. 有効期限を設定（self._expiry.set_expiry()）
         raise NotImplementedError("execute_expire()を実装してください")
 
     async def execute_ttl(self, args: list[str]) -> Integer:
@@ -190,7 +190,7 @@ class CommandHandler:
 
         ステップ3: 有効期限の確認
         ─────────────────────
-        1. self._store.get_expiry(key)で有効期限を取得
+        1. self._expiry.get_expiry(key)で有効期限を取得
         2. expiry_atがNoneの場合は-1を返す
 
         ステップ4: 残り秒数を計算

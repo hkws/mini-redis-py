@@ -169,3 +169,9 @@ class ExpiryManager:
         # 4. 期限切れキーを削除
         # 5. 削除率を計算してループ制御
         pass
+
+    def set_expiry(self, key: str, seconds: int) -> None:
+        raise NotImplementedError("set_expiry()を実装してください")
+
+    def get_ttl(self, key: str) -> int | None:
+        raise NotImplementedError("get_ttl()を実装してください")

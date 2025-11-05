@@ -18,12 +18,12 @@ class StoreEntry:
         expiry_at: 有効期限のUnix timestamp（Noneの場合は期限なし）
 
     【使い方】
-    entry = StoreEntry(value="hello", expiry_at=1234567890.0)
+    entry = StoreEntry(value="hello", expiry_at=1234567890)
     entry = StoreEntry(value="world")  # expiry_atはNone
     """
 
     value: str
-    expiry_at: float | None = field(default=None)
+    expiry_at: int | None = field(default=None)
 
 
 class DataStore:
