@@ -2,14 +2,11 @@
 
 このモジュールは、Redisコマンドのルーティングと実行、
 およびPassive expiryの統合を担当します。
+
 """
 
 import time
-
-from .expiry import ExpiryManager
-from .storage import DataStore
-
-CommandResult = str | int | None
+from solutions.mini_redis.protocol import SimpleString, Integer, BulkString, RedisError, Array
 
 
 class CommandHandler:
@@ -26,238 +23,183 @@ class CommandHandler:
     3. GET/INCR/EXPIRE/TTL: 最初にcheck_and_remove_expired()を呼び出す
     """
 
-    def __init__(self, store: DataStore, expiry: ExpiryManager) -> None:
+    def __init__(self, store, expiry) -> None:
         """ハンドラを初期化.
 
         Args:
-            store: データストアのインスタンス
-            expiry: 有効期限マネージャのインスタンス
+            store: DataStoreのインスタンス
+            expiry: ExpiryManagerのインスタンス
+
         """
         self._store = store
         self._expiry = expiry
 
-    async def execute(self, command: list[str]) -> CommandResult:
-        """コマンドを実行.
-
-        Args:
-            command: コマンド名と引数のリスト
-
-        Returns:
-            コマンドの実行結果
-
-        Raises:
-            CommandError: コマンド実行エラー
-
-        実装のヒント:
-        1. command[0]をコマンド名として取得（大文字変換）
-        2. コマンド名に応じてexecute_*メソッドを呼び出す
-        3. 未知のコマンドの場合はCommandErrorをraise
-        """
+    async def execute(self, command: list[str]) -> SimpleString | BulkString | Integer | RedisError | Array:
+        """コマンドを実行する"""
         if not command:
             raise CommandError("ERR empty command")
 
-        # 1. コマンド名を取得（大文字変換）
+        # コマンド名を大文字に正規化
         cmd_name = command[0].upper()
         args = command[1:]
 
-        # 2. コマンド名に応じてルーティング
+        # ルーティング
         if cmd_name == "PING":
-            if len(args) != 0:
-                raise CommandError("ERR wrong number of arguments for 'ping' command")
-            return await self.execute_ping()
-
+            return await self.execute_ping(args)
         elif cmd_name == "GET":
-            if len(args) != 1:
-                raise CommandError("ERR wrong number of arguments for 'get' command")
-            return await self.execute_get(args[0])
-
+            return await self.execute_get(args)
         elif cmd_name == "SET":
-            if len(args) != 2:
-                raise CommandError("ERR wrong number of arguments for 'set' command")
-            return await self.execute_set(args[0], args[1])
-
+            return await self.execute_set(args)
         elif cmd_name == "INCR":
-            if len(args) != 1:
-                raise CommandError("ERR wrong number of arguments for 'incr' command")
-            return await self.execute_incr(args[0])
-
+            return await self.execute_incr(args)
         elif cmd_name == "EXPIRE":
-            if len(args) != 2:
-                raise CommandError("ERR wrong number of arguments for 'expire' command")
-            try:
-                seconds = int(args[1])
-            except ValueError as e:
-                raise CommandError("ERR value is not an integer or out of range") from e
-            return await self.execute_expire(args[0], seconds)
-
+            return await self.execute_expire(args)
         elif cmd_name == "TTL":
-            if len(args) != 1:
-                raise CommandError("ERR wrong number of arguments for 'ttl' command")
-            return await self.execute_ttl(args[0])
-
+            return await self.execute_ttl(args)
         else:
-            # 3. 未知のコマンド
             raise CommandError(f"ERR unknown command '{cmd_name}'")
 
-    async def execute_ping(self) -> str:
-        """PING: 常に'PONG'を返す.
+    async def execute_ping(self, args: list[str]) -> SimpleString | BulkString:
+        """PINGコマンドを実行"""
+        if len(args) == 0:
+            # 引数なし: PONGを返す（Simple String）
+            return SimpleString("PONG")
+        elif len(args) == 1:
+            # 引数あり: メッセージをエコーバック（Bulk String）
+            return BulkString(args[0])
+        else:
+            # 引数が多すぎる
+            raise CommandError("ERR wrong number of arguments for 'ping' command")
 
-        Returns:
-            "PONG"
+    async def execute_get(self, args: list[str]) -> BulkString:
+        """GETコマンドを実行"""
+        # 引数検証
+        if len(args) != 1:
+            raise CommandError("ERR wrong number of arguments for 'get' command")
 
-        実装のヒント:
-        単純に "PONG" を返すだけ
-        """
-        return "PONG"
+        key = args[0]
 
-    async def execute_get(self, key: str) -> str | None:
-        """GET: キーの値を取得.
+        # Passive Expiry: 期限切れチェック
+        if self._expiry.check_and_remove_expired(key):
+            return BulkString(None)
 
-        Args:
-            key: 取得するキー
+        # 値を取得（BulkStringでラップ）
+        return BulkString(self._store.get(key))
 
-        Returns:
-            キーが存在する場合は値、存在しない場合はNone
+    async def execute_set(self, args: list[str]) -> SimpleString:
+        """SETコマンドを実行"""
+        # 引数検証
+        if len(args) != 2:
+            raise CommandError("ERR wrong number of arguments for 'set' command")
 
-        実装のヒント:
-        1. self._expiry.check_and_remove_expired(key)を呼び出す（Passive expiry）
-        2. self._store.get(key)でキーの値を取得
-        3. 結果を返す
-        """
-        # 1. Passive expiryチェック
-        self._expiry.check_and_remove_expired(key)
-        # 2. キーの値を取得
-        return self._store.get(key)
+        key = args[0]
+        value = args[1]
 
-    async def execute_set(self, key: str, value: str) -> str:
-        """SET: キーに値を設定.
-
-        Args:
-            key: 設定するキー
-            value: 設定する値
-
-        Returns:
-            "OK"
-
-        実装のヒント:
-        1. self._store.set(key, value)でキーに値を設定
-        2. "OK"を返す
-        """
+        # 値を設定
         self._store.set(key, value)
-        return "OK"
 
-    async def execute_incr(self, key: str) -> int:
-        """INCR: キーの値を1増加.
+        return SimpleString("OK")
 
-        Args:
-            key: 増加させるキー
+    async def execute_incr(self, args: list[str]) -> Integer:
+        """INCRコマンドを実行"""
+        # 引数検証
+        if len(args) != 1:
+            raise CommandError("ERR wrong number of arguments for 'incr' command")
 
-        Returns:
-            増加後の値
+        key = args[0]
 
-        Raises:
-            CommandError: 値が整数でない場合
-
-        実装のヒント:
-        1. self._expiry.check_and_remove_expired(key)を呼び出す（Passive expiry）
-        2. self._store.get(key)で現在の値を取得
-        3. 値が存在しない場合は1を設定して返す
-        4. 値が整数でない場合はCommandErrorをraise
-        5. 値を+1してself._store.set(key, new_value)で保存
-        6. 新しい値を返す
-        """
-        # 1. Passive expiryチェック
-        self._expiry.check_and_remove_expired(key)
-
-        # 2. 現在の値を取得
-        current_value = self._store.get(key)
-
-        # 3. 値が存在しない場合は1を設定
-        if current_value is None:
+        # Passive Expiry: 期限切れチェック
+        if self._expiry.check_and_remove_expired(key):
             self._store.set(key, "1")
-            return 1
+            return Integer(1)
 
-        # 4. 値が整数でない場合はエラー
+        # 現在の値を取得
+        current = self._store.get(key)
+
+        if current is None:
+            # キーが存在しない: 0から開始
+            self._store.set(key, "1")
+            return Integer(1)
+
+        # 整数に変換を試みる
         try:
-            int_value = int(current_value)
-        except ValueError as e:
-            raise CommandError("ERR value is not an integer or out of range") from e
+            value = int(current)
+        except ValueError:
+            raise CommandError("ERR value is not an integer or out of range")
 
-        # 5. 値を+1して保存
-        new_value = int_value + 1
+        # インクリメント
+        new_value = value + 1
         self._store.set(key, str(new_value))
 
-        # 6. 新しい値を返す
-        return new_value
+        return Integer(new_value)
 
-    async def execute_expire(self, key: str, seconds: int) -> int:
-        """EXPIRE: キーに有効期限を設定.
+    async def execute_expire(self, args: list[str]) -> Integer:
+        """EXPIREコマンドを実行"""
+        # 引数検証
+        if len(args) != 2:
+            raise CommandError("ERR wrong number of arguments for 'expire' command")
 
-        Args:
-            key: 有効期限を設定するキー
-            seconds: 有効期限の秒数
+        key = args[0]
 
-        Returns:
-            1: キーが存在し有効期限を設定
-            0: キーが存在しない
+        # 秒数を整数に変換
+        try:
+            seconds = int(args[1])
+        except ValueError:
+            raise CommandError("ERR value is not an integer or out of range")
 
-        実装のヒント:
-        1. self._expiry.check_and_remove_expired(key)を呼び出す（Passive expiry）
-        2. キーが存在するか確認
-        3. 存在しない場合は0を返す
-        4. 存在する場合は有効期限を設定して1を返す
-           - expiry_at = time.time() + seconds
-           - self._store.set_expiry(key, expiry_at)
-        """
-        # 1. Passive expiryチェック
-        self._expiry.check_and_remove_expired(key)
+        # Passive Expiry: 期限切れチェック
+        if self._expiry.check_and_remove_expired(key):
+            return Integer(0)
 
-        # 2. キーが存在するか確認
-        if not self._store.exists(key):
-            return 0
+        # 負の秒数はエラー
+        if seconds < 0:
+            raise CommandError("ERR invalid expire time in 'expire' command")
 
-        # 4. 有効期限を設定
-        expiry_at = time.time() + seconds
-        self._store.set_expiry(key, expiry_at)
-        return 1
+        # キーが存在するかチェック
+        if self._store.get(key) is None:
+            return Integer(0)
 
-    async def execute_ttl(self, key: str) -> int:
-        """TTL: キーの残り有効秒数を取得.
+        # 有効期限を設定
+        self._expiry.set_expiry(key, seconds)
+        return Integer(1)
 
-        Args:
-            key: 有効期限を取得するキー
+    async def execute_ttl(self, args: list[str]) -> Integer:
+        """TTLコマンドを実行"""
+        
+        # 引数検証
+        if len(args) != 1:
+            raise CommandError("ERR wrong number of arguments for 'ttl' command")
 
-        Returns:
-            残り秒数（正の整数）
-            -1: キーは存在するが有効期限なし
-            -2: キーが存在しない
+        key = args[0]
 
-        実装のヒント:
-        1. self._expiry.check_and_remove_expired(key)を呼び出す（Passive expiry）
-        2. キーが存在しない場合は-2を返す
-        3. 有効期限が設定されていない場合は-1を返す
-        4. 有効期限が設定されている場合は残り秒数を計算して返す
-           - remaining = int(expiry_at - time.time())
-           - return max(0, remaining)
-        """
-        # 1. Passive expiryチェック
-        self._expiry.check_and_remove_expired(key)
+        # Passive Expiry: 期限切れチェック
+        if self._expiry.check_and_remove_expired(key):
+            return Integer(-2)
 
-        # 2. キーが存在しない場合は-2を返す
-        if not self._store.exists(key):
-            return -2
+        # キーが存在するかチェック
+        if self._store.get(key) is None:
+            return Integer(-2)
 
-        # 3. 有効期限が設定されていない場合は-1を返す
-        expiry_at = self._store.get_expiry(key)
-        if expiry_at is None:
-            return -1
+        # 有効期限を取得
+        ttl = self._expiry.get_ttl(key)
 
-        # 4. 残り秒数を計算して返す
-        remaining = int(expiry_at - time.time())
-        return max(0, remaining)
+        if ttl is None:
+            # 有効期限が設定されていない
+            return Integer(-1)
+
+        return Integer(ttl)
 
 
 class CommandError(Exception):
-    """コマンド実行エラー."""
+    """コマンド実行エラー.
+
+    【使い方】
+    コマンド実行時のエラー（引数不足、型エラー、未知のコマンド等）を表す。
+
+    例:
+        raise CommandError("ERR unknown command 'FOO'")
+        raise CommandError("ERR wrong number of arguments for 'get' command")
+        raise CommandError("ERR value is not an integer or out of range")
+    """
 
     pass

@@ -65,7 +65,7 @@ class TestStep04PassiveExpiry:
         expiry = ExpiryManager(store)
         store.set("key1", "value1")
         # 10秒後に期限切れ
-        store.set_expiry("key1", time.time() + 10)
+        store.set_expiry("key1", int(time.time()) + 10)
 
         result = expiry.check_and_remove_expired("key1")
 
@@ -84,7 +84,7 @@ class TestStep04PassiveExpiry:
         expiry = ExpiryManager(store)
         store.set("key1", "value1")
         # 過去の時刻を設定（既に期限切れ）
-        store.set_expiry("key1", time.time() - 1)
+        store.set_expiry("key1", int(time.time()) - 1)
 
         result = expiry.check_and_remove_expired("key1")
 
@@ -103,11 +103,11 @@ class TestStep04PassiveExpiry:
         expiry = ExpiryManager(store)
         store.set("key1", "value1")
         # 現在時刻を有効期限に設定
-        expiry_time = time.time()
+        expiry_time = int(time.time())
         store.set_expiry("key1", expiry_time)
 
         # わずかに時間を進める
-        time.sleep(0.01)
+        time.sleep(1)
         result = expiry.check_and_remove_expired("key1")
 
         assert result is True
@@ -131,19 +131,19 @@ class TestStep04ActiveExpiry:
 
         # 5つのキーを作成（3つは期限切れ、2つは有効）
         store.set("expired1", "value1")
-        store.set_expiry("expired1", time.time() - 1)
+        store.set_expiry("expired1", int(time.time()) - 1)
 
         store.set("expired2", "value2")
-        store.set_expiry("expired2", time.time() - 1)
+        store.set_expiry("expired2", int(time.time()) - 1)
 
         store.set("expired3", "value3")
-        store.set_expiry("expired3", time.time() - 1)
+        store.set_expiry("expired3", int(time.time()) - 1)
 
         store.set("valid1", "value4")
-        store.set_expiry("valid1", time.time() + 100)
+        store.set_expiry("valid1", int(time.time()) + 100)
 
         store.set("valid2", "value5")
-        store.set_expiry("valid2", time.time() + 100)
+        store.set_expiry("valid2", int(time.time()) + 100)
 
         # Active expiryサイクルを1回実行
         await expiry._active_expiry_cycle()
@@ -178,7 +178,7 @@ class TestStep04ActiveExpiry:
         for i in range(30):
             key = f"key{i}"
             store.set(key, f"value{i}")
-            store.set_expiry(key, time.time() - 1)
+            store.set_expiry(key, int(time.time()) - 1)
 
         # Active expiryサイクルを1回実行
         # 削除率が25%を超えるため、すべてのキーが削除されるまでループが続く

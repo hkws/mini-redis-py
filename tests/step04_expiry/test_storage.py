@@ -107,56 +107,6 @@ class TestStep04StorageExpiry:
         # 有効期限がクリアされている
         assert store.get_expiry("foo") is None
 
-    def test_get_keys_with_expiry_returns_empty_list_for_empty_store(
-        self, store: DataStore
-    ) -> None:
-        """空のストアでget_keys_with_expiry()が空リストを返すことを検証."""
-        result = store.get_keys_with_expiry()
-
-        assert result == []
-
-    def test_get_keys_with_expiry_returns_only_keys_with_expiry(
-        self, store: DataStore
-    ) -> None:
-        """有効期限が設定されたキーのみを返すことを検証.
-
-        検証内容:
-        - entry.expiry_at is not None のキーのみ
-        - 有効期限のないキーは含まれない
-        """
-        # 有効期限付きキー
-        store.set("key1", "value1")
-        store.set_expiry("key1", int(time.time()) + 10)
-
-        store.set("key2", "value2")
-        store.set_expiry("key2", int(time.time()) + 20)
-
-        # 有効期限なしキー
-        store.set("key3", "value3")
-
-        result = store.get_keys_with_expiry()
-
-        assert len(result) == 2
-        assert set(result) == {"key1", "key2"}
-
-    def test_get_keys_with_expiry_excludes_deleted_keys(
-        self, store: DataStore
-    ) -> None:
-        """削除されたキーがget_keys_with_expiry()に含まれないことを検証."""
-        store.set("key1", "value1")
-        store.set_expiry("key1", int(time.time()) + 10)
-
-        store.set("key2", "value2")
-        store.set_expiry("key2", int(time.time()) + 20)
-
-        # key1を削除
-        store.delete("key1")
-
-        result = store.get_keys_with_expiry()
-
-        assert len(result) == 1
-        assert result == ["key2"]
-
     def test_set_expiry_updates_existing_expiry(self, store: DataStore) -> None:
         """既存の有効期限を更新できることを検証.
 
@@ -175,3 +125,64 @@ class TestStep04StorageExpiry:
         second_expiry = int(time.time()) + 20
         store.set_expiry("foo", second_expiry)
         assert store.get_expiry("foo") == second_expiry
+
+    def test_get_all_keys_returns_empty_list_for_empty_store(
+        self, store: DataStore
+    ) -> None:
+        """空のストアで空のリストを返すことを検証.
+
+        検証内容:
+        - データが何も保存されていない場合
+        - 空のリストが返る
+        """
+        result = store.get_all_keys()
+
+        assert result == []
+
+    def test_get_all_keys_returns_all_keys(self, store: DataStore) -> None:
+        """すべてのキーを取得することを検証.
+
+        検証内容:
+        - 複数のキーを設定
+        - すべてのキーが含まれるリストが返る
+        """
+        store.set("key1", "value1")
+        store.set("key2", "value2")
+        store.set("key3", "value3")
+
+        result = store.get_all_keys()
+
+        assert set(result) == {"key1", "key2", "key3"}
+
+    def test_get_all_keys_includes_keys_with_and_without_expiry(
+        self, store: DataStore
+    ) -> None:
+        """有効期限の有無に関わらずすべてのキーを取得することを検証.
+
+        検証内容:
+        - 有効期限付きキーと無期限キーを混在させる
+        - すべてのキーが取得される
+        """
+        store.set("no_expiry", "value1")
+        store.set("with_expiry", "value2")
+        expiry_time = int(time.time()) + 10
+        store.set_expiry("with_expiry", expiry_time)
+
+        result = store.get_all_keys()
+
+        assert set(result) == {"no_expiry", "with_expiry"}
+
+    def test_get_all_keys_reflects_deletions(self, store: DataStore) -> None:
+        """削除されたキーが一覧に含まれないことを検証.
+
+        検証内容:
+        - キーを設定後に削除
+        - 削除されたキーは一覧に含まれない
+        """
+        store.set("key1", "value1")
+        store.set("key2", "value2")
+        store.delete("key1")
+
+        result = store.get_all_keys()
+
+        assert result == ["key2"]

@@ -2,11 +2,38 @@
 
 このモジュールは、RESPプロトコルのパース（バイト列→Pythonオブジェクト）と
 エンコード（Pythonオブジェクト→バイト列）を担当します。
+
 """
 
 from asyncio import StreamReader
+from dataclasses import dataclass
 from typing import Optional
 
+
+@dataclass
+class SimpleString:
+    """Simple String型を表すラッパー (+)"""
+    value: str
+
+@dataclass
+class RedisError:
+    """Error型を表すラッパー (-)"""
+    value: str
+
+@dataclass
+class Integer:
+    """Integer型を表すラッパー (:)"""
+    value: int
+
+@dataclass
+class BulkString:
+    """Bulk String型を表すラッパー ($)"""
+    value: str | None
+
+@dataclass
+class Array:
+    """Array型を表すラッパー (*)"""
+    items: list | None  # Noneの場合はNull Array
 
 class RESPParser:
     """RESPプロトコルのパーサ・エンコーダ.
@@ -21,135 +48,120 @@ class RESPParser:
     """
 
     async def parse_command(self, reader: StreamReader) -> list[str]:
-        """StreamReaderからRESPコマンドを読み取りパース.
+        """コマンド（配列）をパースする"""
+        # 最初の行を読む: *N\r\n
+        line = await reader.readuntil(b'\r\n')
+        line = line[:-2]  # CRLF削除
 
-        Args:
-            reader: asyncioのStreamReader
+        # 配列かチェック
+        if not line.startswith(b'*'):
+            raise RESPProtocolError("Expected array")
 
-        Returns:
-            コマンド名と引数のリスト（例: ["GET", "foo"]）
-
-        Raises:
-            RESPProtocolError: 不正なRESP形式
-            asyncio.IncompleteReadError: 接続が途中で切断
-
-        実装のヒント:
-        1. reader.readuntil(b'\\r\\n')で1行ずつ読み取る
-        2. 最初の行は "*N\\r\\n" 形式（Nは配列の要素数）
-        3. 各要素は "$length\\r\\ndata\\r\\n" 形式のBulk String
-        4. lengthバイト分のデータを読み取る
-        """
-        # 1. 最初の行を読み取る（配列の要素数）
-        line = await reader.readuntil(b"\r\n")
-        line = line[:-2]  # \r\nを削除
-
-        # 配列のプレフィックス'*'を確認
-        if not line.startswith(b"*"):
-            raise RESPProtocolError(f"Expected array prefix '*', got: {line!r}")
-
-        # 配列の要素数を取得
+        # 要素数を取得
         try:
-            array_length = int(line[1:])
-        except ValueError as e:
-            raise RESPProtocolError(f"Invalid array length: {line!r}") from e
+            count = int(line[1:])
+        except ValueError:
+            raise RESPProtocolError("Invalid array length")
 
-        # 2. 各要素をBulk String形式で読み取る
-        result: list[str] = []
-        for _ in range(array_length):
-            # Bulk Stringの長さを読み取る
-            length_line = await reader.readuntil(b"\r\n")
-            length_line = length_line[:-2]  # \r\nを削除
-
-            # Bulk Stringのプレフィックス'$'を確認
-            if not length_line.startswith(b"$"):
-                raise RESPProtocolError(
-                    f"Expected bulk string prefix '$', got: {length_line!r}"
-                )
-
-            # Bulk Stringの長さを取得
-            try:
-                bulk_length = int(length_line[1:])
-            except ValueError as e:
-                raise RESPProtocolError(f"Invalid bulk string length: {length_line!r}") from e
-
-            # 指定された長さ分のデータを読み取る
-            data = await reader.readexactly(bulk_length)
-
-            # 終端の\r\nを読み取って検証
-            terminator = await reader.readexactly(2)
-            if terminator != b"\r\n":
-                raise RESPProtocolError(f"Expected \\r\\n terminator, got: {terminator!r}")
-
-            # UTF-8デコード
-            result.append(data.decode("utf-8"))
+        # 各要素を読む
+        result = []
+        for _ in range(count):
+            element = await self._parse_bulk_string(reader)
+            result.append(element)
 
         return result
 
+    async def _parse_bulk_string(self, reader: StreamReader) -> str:
+        """Bulk Stringをパースする"""
+        # 長さ行を読む: $N\r\n
+        length_line = await reader.readuntil(b'\r\n')
+        length_line = length_line[:-2]  # CRLF削除
+
+        # Bulk Stringかチェック
+        if not length_line.startswith(b'$'):
+            raise RESPProtocolError("Expected bulk string")
+
+        # 長さを取得
+        try:
+            length = int(length_line[1:])
+        except ValueError:
+            raise RESPProtocolError("Invalid bulk string length")
+
+        # Null値のチェック
+        if length == -1:
+            raise RESPProtocolError("Unexpected null value")
+
+        # データを読む（データ + \r\n）
+        data = await reader.readexactly(length + 2)
+
+        # 末尾が\r\nかチェック
+        if data[-2:] != b'\r\n':
+            raise RESPProtocolError("Expected CRLF after bulk string")
+
+        # CRLF削除してUTF-8デコード
+        return data[:-2].decode('utf-8')
+
     def encode_simple_string(self, value: str) -> bytes:
-        """Simple Stringをエンコード.
-
-        Args:
-            value: エンコードする文字列
-
-        Returns:
-            RESP Simple String形式（例: +OK\\r\\n）
-
-        実装のヒント:
-        プレフィックス '+' + 文字列 + '\\r\\n'
-        """
-        return f"+{value}\r\n".encode()
+        """Simple Stringをエンコードする"""
+        return f"+{value}\r\n".encode('utf-8')
 
     def encode_error(self, message: str) -> bytes:
-        """Errorをエンコード.
-
-        Args:
-            message: エラーメッセージ
-
-        Returns:
-            RESP Error形式（例: -ERR message\\r\\n）
-
-        実装のヒント:
-        プレフィックス '-' + メッセージ + '\\r\\n'
-        """
-        return f"-{message}\r\n".encode()
+        """エラーメッセージをエンコードする"""
+        return f"-{message}\r\n".encode('utf-8')
 
     def encode_integer(self, value: int) -> bytes:
-        """Integerをエンコード.
-
-        Args:
-            value: エンコードする整数
-
-        Returns:
-            RESP Integer形式（例: :42\\r\\n）
-
-        実装のヒント:
-        プレフィックス ':' + 整数の文字列表現 + '\\r\\n'
-        """
-        return f":{value}\r\n".encode()
+        """整数をエンコードする"""
+        return f":{value}\r\n".encode('utf-8')
 
     def encode_bulk_string(self, value: str | None) -> bytes:
-        """Bulk Stringをエンコード.
-
-        Args:
-            value: エンコードする文字列（Noneの場合はNull Bulk String）
-
-        Returns:
-            RESP Bulk String形式（例: $3\\r\\nfoo\\r\\n または $-1\\r\\n）
-
-        実装のヒント:
-        - Noneの場合: "$-1\\r\\n"
-        - 文字列の場合: "$length\\r\\n" + データ + "\\r\\n"
-        """
+        """Bulk Stringをエンコードする"""
         if value is None:
-            return b"$-1\r\n"
+            # Null値
+            return b'$-1\r\n'
 
-        # UTF-8エンコード後のバイト長を計算
-        value_bytes = value.encode()
-        length = len(value_bytes)
-        return f"${length}\r\n".encode() + value_bytes + b"\r\n"
+        # バイト列に変換
+        data = value.encode('utf-8')
+        length = len(data)  # バイト長を取得
+
+        # $<length>\r\n<data>\r\n
+        return f"${length}\r\n".encode('utf-8') + data + b'\r\n'
+
+    def encode_array(self, items: list | None) -> bytes:
+        """Arrayをエンコード"""
+        if items is None:
+            # Null Array
+            return b'*-1\r\n'
+
+        # 要素数
+        result = f"*{len(items)}\r\n".encode('utf-8')
+
+        # 各要素をエンコード
+        for item in items:
+            result += self.encode_response(item)
+
+        return result
+
+    def encode_response(self, result) -> bytes:
+        """応答を適切な形式でエンコードする"""
+        if isinstance(result, SimpleString):
+            return self.encode_simple_string(result.value)
+        elif isinstance(result, RedisError):
+            return self.encode_error(result.value)
+        elif isinstance(result, Integer):
+            return self.encode_integer(result.value)
+        elif isinstance(result, BulkString):
+            return self.encode_bulk_string(result.value)
+        elif isinstance(result, Array):
+            return self.encode_array(result.items)
+        else:
+            raise ValueError(f"Unsupported type: {type(result)}")
 
 
 class RESPProtocolError(Exception):
-    """RESPプロトコルのパースエラー."""
+    """RESPプロトコルのパースエラー.
+
+    例:
+        raise RESPProtocolError(f"Expected array prefix '*', got: {line!r}")
+    """
 
     pass

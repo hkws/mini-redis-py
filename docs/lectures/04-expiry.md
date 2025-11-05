@@ -37,15 +37,222 @@ for i in range(10000):
 
 ### Redisの2段階有効期限管理
 
-Redisは、Passive ExpiryとActive Expiryの2つのメカニズムを組み合わせて、効率的にメモリを管理します。
+Redisは、Passive ExpiryとActive Expiryの2つのメカニズムを組み合わせて、効率的にメモリを管理します。本セクションでは、段階的にこれらの機能を実装していきます。
 
-## Passive Expiry（受動的期限管理）
+## ステップ1: EXPIREおよびTTLコマンドの実装
 
-### 動作原理
+まずは、EXPIREとTTLコマンドを実装します。
+- EXPIRE: キーに有効期限を設定
+- TTL: キーの残り有効期限を取得
+この2つのコマンドを実装するためには、有効期限の設定および取得機能が必要です。それらの機能は、`ExpiryManager`クラスに実装します。
+
+### ExpiryManagerの基本構造
+
+有効期限管理を担当する`ExpiryManager`クラスを作成します。まずはEXPIRE/TTLに必要な機能のみを実装します。
+
+```python
+import time
+from mini_redis.storage import DataStore
+
+class ExpiryManager:
+    """有効期限管理を担当するクラス"""
+
+    def __init__(self, store: DataStore):
+        self._store = store
+```
+
+### 有効期限の設定と取得
+
+EXPIRE/TTLコマンドに必要な2つのメソッドを実装します。
+
+```python
+def set_expiry(self, key: str, seconds: int) -> None:
+    """
+    キーに有効期限を設定する
+
+    Args:
+        key: 対象キー
+        seconds: 有効期限（秒）
+    """
+    expiry_time = int(time.time()) + seconds
+    self._store.set_expiry(key, expiry_time)
+
+def get_ttl(self, key: str) -> int | None:
+    """
+    キーの残り有効期限（秒）を取得する
+
+    Args:
+        key: 対象キー
+
+    Returns:
+        残り秒数、または None（期限未設定）
+    """
+    expiry_time = self._store.get_expiry(key)
+
+    if expiry_time is None:
+        return None
+
+    current_time = int(time.time())
+    ttl = expiry_time - current_time
+
+    # 期限切れの場合は0を返す
+    return max(0, ttl)
+```
+
+### CommandHandlerへの統合
+
+実装した`ExpiryManager`のメソッドは、`CommandHandler`クラスで使用します。`CommandHandler`クラスに`ExpiryManager`を追加しましょう。
+
+```python
+class CommandHandler:
+    def __init__(self, store: DataStore, expiry: ExpiryManager):
+        self._store = store
+        self._expiry = expiry
+```
+
+### EXPIREコマンドの実装
+
+EXPIREコマンドを実装して、クライアントから有効期限を設定できるようにします。
+
+**用途**: キーに有効期限（秒）を設定
+
+**構文**: `EXPIRE key seconds`
+
+**応答**:
+- キーが存在し、期限設定成功: `1`（Integer）
+- キーが存在しない: `0`（Integer）
+
+#### 実装
+
+```python
+async def execute_expire(self, args: list[str]) -> Integer:
+    """EXPIREコマンドを実行"""
+    # 引数検証
+    if len(args) != 2:
+        raise CommandError("ERR wrong number of arguments for 'expire' command")
+
+    key = args[0]
+
+    # 秒数を整数に変換
+    try:
+        seconds = int(args[1])
+    except ValueError:
+        raise CommandError("ERR value is not an integer or out of range")
+
+    # 負の秒数はエラー
+    if seconds < 0:
+        raise CommandError("ERR invalid expire time in 'expire' command")
+
+    # キーが存在するかチェック
+    if self._store.get(key) is None:
+        return Integer(0)
+
+    # 有効期限を設定
+    self._expiry.set_expiry(key, seconds)
+    return Integer(1)
+```
+
+**参考**: [ドキュメント](https://redis.io/docs/latest/commands/expire/)
+
+### TTLコマンドの実装
+
+TTLコマンドを実装して、キーの残り有効期限を確認できるようにします。
+
+**用途**: キーの残り有効期限（秒）を取得
+
+**構文**: `TTL key`
+
+**応答**:
+- 有効期限あり: 残り秒数（Integer）
+- 有効期限なし: `-1`（Integer）
+- キーが存在しない: `-2`（Integer）
+
+#### 実装
+
+```python
+async def execute_ttl(self, args: list[str]) -> Integer:
+    """TTLコマンドを実行"""
+    # 引数検証
+    if len(args) != 1:
+        raise CommandError("ERR wrong number of arguments for 'ttl' command")
+
+    key = args[0]
+
+    # キーが存在するかチェック
+    if self._store.get(key) is None:
+        return Integer(-2)
+
+    # 有効期限を取得
+    ttl = self._expiry.get_ttl(key)
+
+    if ttl is None:
+        # 有効期限が設定されていない
+        return Integer(-1)
+
+    return Integer(ttl)
+```
+
+```bash
+> SET mykey "Hello"
+OK
+
+> EXPIRE mykey 60
+(integer) 1
+
+> TTL mykey
+(integer) 59
+
+> SET persistent "forever"
+OK
+
+> TTL persistent
+(integer) -1
+
+> TTL nonexistent
+(integer) -2
+```
+
+**参考**: [ドキュメント](https://redis.io/docs/latest/commands/ttl/)
+
+### コマンドルーティングへの追加
+
+`CommandHandler`クラスの`execute()`メソッドでは、リクエストされたコマンドに応じて処理を実行していました。ここにEXPIRE/TTLコマンドを追加します。
+
+```python
+async def execute(self, command: list[str]) -> SimpleString | BulkString | Integer | RedisError | Array:
+    """コマンドを実行する"""
+    if not command:
+        raise CommandError("ERR empty command")
+
+    cmd_name = command[0].upper()
+    args = command[1:]
+
+    # ルーティング（EXPIRE/TTLを追加）
+    if cmd_name == "PING":
+        return await self.execute_ping(args)
+    elif cmd_name == "GET":
+        return await self.execute_get(args)
+    elif cmd_name == "SET":
+        return await self.execute_set(args)
+    elif cmd_name == "INCR":
+        return await self.execute_incr(args)
+    elif cmd_name == "EXPIRE":
+        return await self.execute_expire(args)
+    elif cmd_name == "TTL":
+        return await self.execute_ttl(args)
+    else:
+        raise CommandError(f"ERR unknown command '{cmd_name}'")
+```
+
+これで、EXPIRE/TTLコマンドが動作するようになりました！ただし、まだ有効期限が切れたキーは自動削除されません。次のステップでPassive Expiryを実装します。
+
+## ステップ2: Passive Expiryの実装
 
 Passive Expiryは、キーにアクセスされた時に有効期限をチェックし、期限切れなら削除する仕組みです。
 
-動作フロー:
+### 動作原理
+
+Passive Expiryの動作フロー:
 
 ```mermaid
 sequenceDiagram
@@ -72,103 +279,173 @@ sequenceDiagram
     end
 ```
 
-### 実装例
 
-Passive Expiryの実装には、期限切れかどうかをチェックし、期限切れの場合には削除する処理を実装する必要があります。
+### ExpiryManagerへのcheck_and_remove_expiredの追加
 
+Passive Expiryを実現するため、`ExpiryManager`に期限切れチェック機能を追加します。
 
 ```python
-import time
+def check_and_remove_expired(self, key: str) -> bool:
+    """
+    キーが期限切れかチェックし、期限切れなら削除する
 
-class ExpiryManager:
-    def __init__(self, storage: Storage):
-        self._storage = storage
+    Args:
+        key: チェックするキー
 
-    def check_and_remove_expired(self, key: str) -> bool:
-        """
-        キーが期限切れかチェックし、期限切れなら削除する
+    Returns:
+        True: 期限切れで削除した
+        False: 期限内または期限未設定
+    """
+    # 有効期限を取得
+    expiry_time = self._store.get_expiry(key)
 
-        Args:
-            key: チェックするキー
-
-        Returns:
-            True: 期限切れで削除した
-            False: 期限内または期限未設定
-        """
-        # 有効期限を取得
-        expiry_time = self._storage.get_expiry(key)
-
-        if expiry_time is None:
-            # 有効期限が設定されていない
-            return False
-
-        # 現在時刻と比較
-        current_time = int(time.time())
-
-        if current_time >= expiry_time:
-            # 期限切れ: キーを削除
-            self._storage.delete(key)
-            return True
-
-        # 期限内
+    if expiry_time is None:
+        # 有効期限が設定されていない
         return False
 
-    def set_expiry(self, key: str, seconds: int) -> None:
-        """
-        キーに有効期限を設定する
+    # 現在時刻と比較
+    current_time = int(time.time())
 
-        Args:
-            key: 対象キー
-            seconds: 有効期限（秒）
-        """
-        expiry_time = int(time.time()) + seconds
-        self._storage.set_expiry(key, expiry_time)
+    if current_time >= expiry_time:
+        # 期限切れ: キーを削除
+        self._store.delete(key)
+        return True
 
-    def get_ttl(self, key: str) -> int | None:
-        """
-        キーの残り有効期限（秒）を取得する
-
-        Args:
-            key: 対象キー
-
-        Returns:
-            残り秒数、または None（期限未設定）
-        """
-        expiry_time = self._storage.get_expiry(key)
-
-        if expiry_time is None:
-            return None
-
-        current_time = int(time.time())
-        ttl = expiry_time - current_time
-
-        # 期限切れの場合は0を返す（厳密には削除すべき）
-        return max(0, ttl)
+    # 期限内
+    return False
 ```
 
-### Passive Expiryの利点
+### 既存コマンドへのPassive Expiryの追加
 
-Passive Expiryの最大の利点は、実装がシンプルで理解しやすい点です。アクセス時にのみ有効期限をチェックするため、CPU負荷が低く効率的に動作します。また、キーにアクセスする直前に期限をチェックするため、期限切れのデータをクライアントに返してしまう心配がなく、正確性も高くなっています。
+GET、INCR、EXPIRE、TTLの各コマンドに、キーにアクセスする前にPassive Expiryチェックを追加します。
 
-### Passive Expiryの欠点
+#### GETコマンドの更新
 
-一方で、Passive Expiryのみでは、実際の有効期限よりも後に削除される可能性があります。アクセスされないキーは期限が切れてもメモリに残り続け、削除が遅延するのです。
+```python
+async def execute_get(self, args: list[str]) -> BulkString:
+    """GETコマンドを実行（Passive Expiry追加）"""
+    if len(args) != 1:
+        raise CommandError("ERR wrong number of arguments for 'get' command")
 
-この問題を解決するのが、Active Expiryです。Passive Expiryによってアクセスされるキーを効率的に削除し、Active Expiryによってアクセスされないキーも確実に削除します。
+    key = args[0]
 
-## Active Expiry（能動的期限管理）
+    # Passive Expiry: 期限切れチェック
+    if self._expiry.check_and_remove_expired(key):
+        return BulkString(None)
 
-### 動作原理
+    return BulkString(self._store.get(key))
+```
 
-Active Expiryは、定期的にランダムなキーをサンプリングし、期限切れなら削除する仕組みです。
+#### INCRコマンドの更新
 
-### アルゴリズム
+```python
+async def execute_incr(self, args: list[str]) -> Integer:
+    """INCRコマンドを実行（Passive Expiry追加）"""
+    if len(args) != 1:
+        raise CommandError("ERR wrong number of arguments for 'incr' command")
 
-Active Expiryにおいては、まず1秒ごとにバックグラウンドタスクを起動し、有効期限が設定されたキーからランダムに20個をサンプリングします。各キーの期限をチェックして期限切れなら削除し、削除率が25%を超えた場合は即座に再実行します（ステップ2に戻る）。削除率が25%以下なら、次の1秒まで待機します。
+    key = args[0]
 
-削除率が高い（25%超）ということは、多くのキーが期限切れになっている可能性が高いと考えられるため、再度サンプリングして削除します。
+    # Passive Expiry: 期限切れチェック
+    if self._expiry.check_and_remove_expired(key):
+        self._store.set(key, "1")
+        return Integer(1)
 
-TODO: これが正しいことを確認
+    current = self._store.get(key)
+    if current is None:
+        self._store.set(key, "1")
+        return Integer(1)
+
+    try:
+        value = int(current)
+    except ValueError:
+        raise CommandError("ERR value is not an integer or out of range")
+
+    new_value = value + 1
+    self._store.set(key, str(new_value))
+    return Integer(new_value)
+```
+
+#### EXPIREコマンドの更新
+
+```python
+async def execute_expire(self, args: list[str]) -> Integer:
+    """EXPIREコマンドを実行（Passive Expiry追加）"""
+    if len(args) != 2:
+        raise CommandError("ERR wrong number of arguments for 'expire' command")
+
+    key = args[0]
+
+    try:
+        seconds = int(args[1])
+    except ValueError:
+        raise CommandError("ERR value is not an integer or out of range")
+
+    if seconds < 0:
+        raise CommandError("ERR invalid expire time in 'expire' command")
+
+    # Passive Expiry: 期限切れチェック
+    if self._expiry.check_and_remove_expired(key):
+        return Integer(0)
+
+    if self._store.get(key) is None:
+        return Integer(0)
+
+    self._expiry.set_expiry(key, seconds)
+    return Integer(1)
+```
+
+#### TTLコマンドの更新
+
+```python
+async def execute_ttl(self, args: list[str]) -> Integer:
+    """TTLコマンドを実行（Passive Expiry追加）"""
+    if len(args) != 1:
+        raise CommandError("ERR wrong number of arguments for 'ttl' command")
+
+    key = args[0]
+
+    # Passive Expiry: 期限切れチェック
+    if self._expiry.check_and_remove_expired(key):
+        return Integer(-2)
+
+    if self._store.get(key) is None:
+        return Integer(-2)
+
+    ttl = self._expiry.get_ttl(key)
+
+    if ttl is None:
+        return Integer(-1)
+
+    return Integer(ttl)
+```
+
+### Passive Expiryの利点と欠点
+
+**利点**:
+- 実装がシンプルで理解しやすい
+- アクセス時にのみチェックするため、CPU負荷が低い
+- 期限切れのデータをクライアントに返さない（正確性が高い）
+
+**欠点**:
+- アクセスされないキーは期限が切れてもメモリに残り続ける
+- 実際の有効期限よりも後に削除される可能性がある
+
+この問題を解決するのが、次のステップで実装するActive Expiryです。
+
+## ステップ3: Active Expiryの実装
+
+Active Expiryは、定期的にバックグラウンドでランダムなキーをサンプリングし、期限切れなら削除する仕組みです。アクセスされないキーも確実に削除できます。
+
+Active Expiryは以下のアルゴリズムで動作します：
+
+1. 1秒ごとにバックグラウンドタスクを起動
+2. すべてのキーからランダムに20個をサンプリング
+3. 各キーの期限をチェックして期限切れなら削除
+4. 削除率が25%を超えた場合は即座に再実行（ステップ2に戻る）
+5. 削除率が25%以下なら、次の1秒まで待機
+
+削除率が高い（25%超）ということは、多くのキーが期限切れになっている可能性が高いため、再度サンプリングして削除します。
 
 ```mermaid
 graph TB
@@ -197,380 +474,273 @@ graph TB
     style SLEEP fill:#e1ffe1
 ```
 
-### 実装例
+### ExpiryManagerへのActive Expiry機能の追加
+
+Active Expiryを実現するため、`ExpiryManager`にバックグラウンドタスク関連のメソッドを追加します。
+
+#### 必要なインポートの追加
 
 ```python
+import time
 import asyncio
 import random
+import logging
+
+# Active expiryの定数
+ACTIVE_EXPIRY_SAMPLE_SIZE = 20  # 1サイクルでサンプリングする最大キー数
+ACTIVE_EXPIRY_THRESHOLD_PERCENT = 25  # 削除率のしきい値（%）
+
 
 class ExpiryManager:
-    def __init__(self, storage: Storage):
-        self._storage = storage
-        self._active_expiry_task: asyncio.Task | None = None
+    """キーの有効期限管理.
 
-    def start_active_expiry(self) -> None:
-        """Active Expiryバックグラウンドタスクを開始する"""
-        if self._active_expiry_task is None:
-            self._active_expiry_task = asyncio.create_task(
-                self._active_expiry_loop()
-            )
+    責務:
+    - Passive expiry: キーアクセス時に期限をチェックして削除
+    - Active expiry: バックグラウンドタスクで定期的に期限切れキーを削除
+    """
 
-    def stop_active_expiry(self) -> None:
-        """Active Expiryバックグラウンドタスクを停止する"""
-        if self._active_expiry_task is not None:
-            self._active_expiry_task.cancel()
-            self._active_expiry_task = None
+    def __init__(self, store) -> None:
+        """マネージャを初期化."""
+        self._store = store
+        self._task: asyncio.Task[None] | None = None
+        self._running = False
+```
 
-    async def _active_expiry_loop(self) -> None:
-        """Active Expiryのメインループ"""
+#### Active Expiryの起動・停止メソッド
+
+`start()`と`stop()`メソッドを実装します。これらのメソッドは、Active Expiryのライフサイクルを管理します。
+
+```python
+async def start(self) -> None:
+    """Active expiryタスクを開始.
+
+    バックグラウンドでactive expiryタスクを起動する。
+    stop()が呼ばれるまで実行を継続する。
+
+    Raises:
+        RuntimeError: 既に実行中の場合
+    """
+    if self._running:
+        raise RuntimeError("Active expiry is already running")
+
+    logger.info("Starting active expiry task")
+    self._running = True
+    self._task = asyncio.create_task(self._run_active_expiry())
+
+async def stop(self) -> None:
+    """Active expiryタスクを停止.
+
+    実行中のactive expiryタスクを停止し、完了を待つ。
+    タスクが実行中でない場合は何もしない。
+    """
+    if not self._running:
+        return
+
+    logger.info("Stopping active expiry task...")
+    self._running = False
+
+    if self._task and not self._task.done():
+        self._task.cancel()
         try:
-            while True:
-                # 1秒待機
-                await asyncio.sleep(1)
-
-                # サンプリングと削除を実行
-                await self._sample_and_remove_expired()
-
+            await self._task
         except asyncio.CancelledError:
-            # タスクがキャンセルされた
-            pass
+            logger.info("Active expiry task stopped")
 
-    async def _sample_and_remove_expired(self) -> None:
-        """ランダムサンプリングして期限切れキーを削除"""
-        while True:
-            # 有効期限が設定されたキー一覧を取得
-            keys_with_expiry = self._storage.get_keys_with_expiry()
-
-            if not keys_with_expiry:
-                # 有効期限付きキーがない
-                break
-
-            # ランダムに最大20個サンプリング
-            sample_size = min(20, len(keys_with_expiry))
-            sample = random.sample(keys_with_expiry, sample_size)
-
-            # 期限切れキーを削除
-            expired_count = 0
-            for key in sample:
-                if self.check_and_remove_expired(key):
-                    expired_count += 1
-
-            # 削除率を計算
-            deletion_rate = expired_count / len(sample)
-
-            # 削除率が25%以下なら終了
-            if deletion_rate <= 0.25:
-                break
-
-            # 削除率が25%超なら再実行（即座に次のサンプリング）
+    self._task = None
 ```
 
-### Active Expiryのタイムライン
+#### Active Expiryのメインループ
 
-以下のタイムラインは、Active Expiryがどのように動作するかを示しています：
-
-```
-時刻     | 動作
----------|--------------------------------------------------
-0秒      | キー作成: 100個（全て10秒後に期限切れ）
-1秒      | Active Expiry起動、サンプリング（0個削除、削除率0%）
-...      | ...
-10秒     | サンプリング（20個中20個削除、削除率100% → 再実行）
-10秒+    | サンプリング（20個中20個削除、削除率100% → 再実行）
-10秒++   | サンプリング（20個中20個削除、削除率100% → 再実行）
-10秒+++  | サンプリング（20個中20個削除、削除率100% → 再実行）
-10秒++++ | サンプリング（20個中15個削除、削除率75% → 再実行）
-10秒+++  | サンプリング（20個中3個削除、削除率15% → 待機）
-11秒     | 1秒待機後、サンプリング...
-```
-
-ポイント:
-期限切れキーが多い時は連続してサンプリングを実行し、削除率が下がると1秒待機してから次のサンプリングを行います。
-
-### Active Expiryのパラメータ
-
-| パラメータ | 値 | 理由 |
-|-----------|-----|------|
-| サンプリング間隔 | 1秒 | CPU負荷とメモリ効率のバランス |
-| サンプルサイズ | 20個 | 統計的に十分なサンプル数 |
-| 削除率閾値 | 25% | 多くの期限切れキーが残っている可能性 |
-
-TODO: これが正しいことを確認
-
-パラメータの調整:
+`_run_active_expiry()`メソッドは、Active Expiryのメインループです。`_running`フラグがTrueの間、1秒ごとにActive expiryサイクルを実行します。
 
 ```python
-# より積極的に削除したい場合
-SAMPLE_INTERVAL = 0.5  # 0.5秒ごと
-SAMPLE_SIZE = 50       # 50個サンプリング
-THRESHOLD = 0.20       # 20%閾値
+async def _run_active_expiry(self) -> None:
+    """内部: Active expiryのメインループ.
 
-# よりCPU効率を重視する場合
-SAMPLE_INTERVAL = 5    # 5秒ごと
-SAMPLE_SIZE = 10       # 10個サンプリング
-THRESHOLD = 0.30       # 30%閾値
-```
-
-## EXPIRE/TTLコマンドの実装
-
-有効期限管理のためには、EXPIREとTTLの2つのコマンドが必要です。前のセクションでは基本的な4つのコマンドを実装しましたが、ここではこれらの有効期限関連のコマンドを追加します。
-
-### 1. EXPIREコマンド
-
-用途: キーに有効期限（秒）を設定
-
-構文: `EXPIRE key seconds`
-
-応答:
-- キーが存在し、期限設定成功: `1`（Integer）
-- キーが存在しない: `0`（Integer）
-
-実装例:
-
-```python
-async def execute_expire(self, args: list[str]) -> Integer:
-    """EXPIREコマンドを実行"""
-    # 引数検証
-    if len(args) != 2:
-        raise CommandError("ERR wrong number of arguments for 'expire' command")
-
-    key = args[0]
-
-    # 秒数を整数に変換
+    _runningフラグがTrueの間、1秒ごとにActive expiryサイクルを実行する。
+    """
     try:
-        seconds = int(args[1])
-    except ValueError:
-        raise CommandError("ERR value is not an integer or out of range")
+        logger.info("Active expiry task started")
 
-    # 負の秒数はエラー
-    if seconds < 0:
-        raise CommandError("ERR invalid expire time in 'expire' command")
+        while self._running:
+            # 1秒待機
+            await asyncio.sleep(1)
 
-    # Passive Expiry: 期限切れチェック
-    if self._expiry.check_and_remove_expired(key):
-        # 期限切れなので存在しない
-        return Integer(0)
+            # サンプリングと削除を実行
+            await self._active_expiry_cycle()
 
-    # キーが存在するかチェック
-    if self._store.get(key) is None:
-        return Integer(0)
+    except asyncio.CancelledError:
+        logger.info("Active expiry task cancelled")
+        raise
 
-    # 有効期限を設定
-    self._expiry.set_expiry(key, seconds)
-    return Integer(1)
+    finally:
+        logger.info("Active expiry task finished")
 ```
 
-redis-cliでの実行例:
+#### サンプリングと削除の実装
 
-```bash
-> SET mykey "Hello"
-OK
-
-> EXPIRE mykey 60
-(integer) 1
-
-> EXPIRE nonexistent 60
-(integer) 0
-
-> TTL mykey
-(integer) 59
-```
-
-[ドキュメント](https://redis.io/docs/latest/commands/expire/)
-
-### 2. TTLコマンド
-
-用途: キーの残り有効期限（秒）を取得
-
-構文: `TTL key`
-
-応答:
-- 有効期限あり: 残り秒数（Integer）
-- 有効期限なし: `-1`（Integer）
-- キーが存在しない: `-2`（Integer）
-
-実装:
+`_active_expiry_cycle()`メソッドは、1サイクルのActive expiry処理を実行します。
 
 ```python
-async def execute_ttl(self, args: list[str]) -> Integer:
-    """TTLコマンドを実行"""
-    # 引数検証
-    if len(args) != 1:
-        raise CommandError("ERR wrong number of arguments for 'ttl' command")
+async def _active_expiry_cycle(self) -> None:
+    """1サイクルのActive expiry処理.
 
-    key = args[0]
+    最大ACTIVE_EXPIRY_SAMPLE_SIZEキーをランダムサンプリングし、期限切れキーを削除する。
+    削除率がACTIVE_EXPIRY_THRESHOLD_PERCENT%を超える場合、即座に次のサンプリングを実行する。
+    """
+    while True:
+        # すべてのキーを取得
+        all_keys = self._store.get_all_keys()
 
-    # Passive Expiry: 期限切れチェック
-    if self._expiry.check_and_remove_expired(key):
-        # 期限切れなので存在しない
-        return Integer(-2)
+        if not all_keys:
+            # キーが存在しない
+            break
 
-    # キーが存在するかチェック
-    if self._store.get(key) is None:
-        return Integer(-2)
+        # ランダムに最大20個サンプリング
+        sample_size = min(ACTIVE_EXPIRY_SAMPLE_SIZE, len(all_keys))
+        sampled_keys = random.sample(all_keys, sample_size)
 
-    # 有効期限を取得
-    ttl = self._expiry.get_ttl(key)
-
-    if ttl is None:
-        # 有効期限が設定されていない
-        return Integer(-1)
-
-    return Integer(ttl)
-```
-
-redis-cliでの実行例:
-
-```bash
-> SET mykey "Hello"
-OK
-
-> EXPIRE mykey 60
-(integer) 1
-
-> TTL mykey
-(integer) 59
-
-> TTL mykey
-(integer) 58
-
-> SET persistent "forever"
-OK
-
-> TTL persistent
-(integer) -1
-
-> TTL nonexistent
-(integer) -2
-```
-
-[ドキュメント](https://redis.io/docs/latest/commands/ttl/)
-
-### commands.pyへの統合
-
-前のセクションで実装した`Commands`クラスに、EXPIRE/TTLコマンドのルーティングを追加します。また、既存のGET/INCRコマンドにもPassive Expiryのチェックを追加します。
-
-```python
-class Commands:
-    def __init__(self, storage: Storage, expiry: ExpiryManager):
-        self._store = storage
-        self._expiry = expiry
-
-    async def execute(self, command: list[str]) -> SimpleString | BulkString | Integer | RedisError | Array:
-        """コマンドを実行する"""
-        if not command:
-            raise CommandError("ERR empty command")
-
-        cmd_name = command[0].upper()
-        args = command[1:]
-
-        # ルーティング（EXPIRE/TTLを追加）
-        if cmd_name == "PING":
-            return await self.execute_ping(args)
-        elif cmd_name == "GET":
-            return await self.execute_get(args)
-        elif cmd_name == "SET":
-            return await self.execute_set(args)
-        elif cmd_name == "INCR":
-            return await self.execute_incr(args)
-        elif cmd_name == "EXPIRE":
-            return await self.execute_expire(args)
-        elif cmd_name == "TTL":
-            return await self.execute_ttl(args)
-        else:
-            raise CommandError(f"ERR unknown command '{cmd_name}'")
-
-    async def execute_get(self, args: list[str]) -> BulkString:
-        """GETコマンドを実行（Passive Expiry追加）"""
-        if len(args) != 1:
-            raise CommandError("ERR wrong number of arguments for 'get' command")
-
-        key = args[0]
-
-        # Passive Expiry: 期限切れチェック
-        if self._expiry.check_and_remove_expired(key):
-            return BulkString(None)
-
-        return BulkString(self._store.get(key))
-
-    async def execute_incr(self, args: list[str]) -> Integer:
-        """INCRコマンドを実行（Passive Expiry追加）"""
-        if len(args) != 1:
-            raise CommandError("ERR wrong number of arguments for 'incr' command")
-
-        key = args[0]
-
-        # Passive Expiry: 期限切れチェック
-        if self._expiry.check_and_remove_expired(key):
-            self._store.set(key, "1")
-            return Integer(1)
-
-        current = self._store.get(key)
-        if current is None:
-            self._store.set(key, "1")
-            return Integer(1)
-
-        try:
-            value = int(current)
-        except ValueError:
-            raise CommandError("ERR value is not an integer or out of range")
-
-        new_value = value + 1
-        self._store.set(key, str(new_value))
-        return Integer(new_value)
-```
-
-## asyncioバックグラウンドタスク
-
-### タスクの作成と管理
-
-```python
-class Server:
-    def __init__(self):
-        self._expiry = ExpiryManager(storage)
-        self._server_task: asyncio.Task | None = None
-
-    async def start(self) -> None:
-        """サーバを起動"""
-        # Active Expiryを開始
-        self._expiry.start_active_expiry()
-
-        # TCPサーバを起動
-        server = await asyncio.start_server(
-            self.handle_client, '127.0.0.1', 6379
+        # 期限切れキーを削除
+        deleted_count = sum(
+            1 for key in sampled_keys if self.check_and_remove_expired(key)
         )
 
-        async with server:
-            await server.serve_forever()
+        # 削除率を計算
+        deletion_rate = (deleted_count / sample_size) * 100
 
-    async def shutdown(self) -> None:
-        """サーバを停止"""
-        # Active Expiryを停止
-        self._expiry.stop_active_expiry()
+        # 削除率が25%以下なら終了
+        if deletion_rate <= ACTIVE_EXPIRY_THRESHOLD_PERCENT:
+            break
+
+        # 削除率が25%超なら再実行（即座に次のサンプリング）
 ```
 
-### タスクのキャンセル処理
+### Serverでの起動
+
+`TCPServer`クラスでActive Expiryを起動します。`start()`メソッドで、Active Expiryバックグラウンドタスクを開始してからTCPサーバを起動します。
 
 ```python
-def stop_active_expiry(self) -> None:
-    """Active Expiryバックグラウンドタスクを停止する"""
-    if self._active_expiry_task is not None:
-        # タスクにキャンセルを要求
-        self._active_expiry_task.cancel()
-        self._active_expiry_task = None
+class TCPServer:
+    """Mini-RedisのTCPサーバ."""
 
-async def _active_expiry_loop(self) -> None:
+    def __init__(
+        self,
+        host: str = "127.0.0.1",
+        port: int = 6379,
+        store: "DataStore | None" = None,
+        expiry: "ExpiryManager | None" = None,
+        client_handler: "ClientHandler | None" = None,
+    ) -> None:
+        """サーバを初期化.
+
+        Args:
+            host: バインドするホスト
+            port: バインドするポート
+            store: データストア（Noneの場合は新規作成）
+            expiry: Expiryマネージャ（Noneの場合は新規作成）
+            client_handler: クライアントハンドラ（Noneの場合は新規作成）
+        """
+        self.host = host
+        self.port = port
+        self._server: asyncio.Server | None = None
+        self._store = store
+        self._expiry = expiry
+        self._client_handler = client_handler
+
+    async def start(self) -> None:
+        """サーバを起動し、接続を待ち受ける.
+
+        Active Expiryバックグラウンドタスクを起動し、TCPサーバを開始する。
+        """
+        # 依存性の初期化（省略）
+        # ...
+
+        # 1. asyncio.start_server()でサーバを起動
+        self._server = await asyncio.start_server(
+            client_handler.handle, self.host, self.port
+        )
+
+        logger.info(f"Mini-Redis server started on {self.host}:{self.port}")
+
+        # 2. Active Expiryを開始（バックグラウンドタスク）
+        await expiry.start()
+
+        # 3. サーバを実行（無限ループ）
+        async with self._server:
+            await self._server.serve_forever()
+
+    async def stop(self) -> None:
+        """サーバを停止し、すべての接続をクローズする.
+
+        Active Expiryタスクを停止し、TCPサーバをクローズする。
+        """
+        logger.info("Stopping Mini-Redis server...")
+
+        # 1. Active Expiryを停止
+        if self._expiry is not None:
+            await self._expiry.stop()
+
+        # 2. TCPサーバを停止
+        if self._server is not None:
+            self._server.close()
+            await self._server.wait_closed()
+
+        logger.info("Mini-Redis server stopped")
+```
+
+### asyncioバックグラウンドタスクの補足
+
+#### タスクのキャンセル処理
+
+`asyncio.Task.cancel()`を呼ぶと、タスク内で`CancelledError`が発生します。必要に応じてキャッチして終了処理を行います。
+
+```python
+async def _run_active_expiry(self) -> None:
     """Active Expiryのメインループ"""
     try:
-        while True:
+        logger.info("Active expiry task started")
+
+        while self._running:
             await asyncio.sleep(1)
-            await self._sample_and_remove_expired()
+            await self._active_expiry_cycle()
 
     except asyncio.CancelledError:
         # キャンセルされた: クリーンアップして終了
-        print("Active expiry task cancelled")
-        # 必要に応じてクリーンアップ処理
-        raise  # CancelledErrorを再発生させて終了
+        logger.info("Active expiry task cancelled")
+        raise  # CancelledErrorを再発生
+
+    finally:
+        logger.info("Active expiry task finished")
+```
+
+#### タスクの状態管理
+
+`_running`フラグを使って、タスクの実行状態を管理します。これにより、`stop()`メソッドでタスクを安全に停止できます。
+
+```python
+async def start(self) -> None:
+    """Active expiryタスクを開始"""
+    if self._running:
+        raise RuntimeError("Active expiry is already running")
+
+    self._running = True
+    self._task = asyncio.create_task(self._run_active_expiry())
+
+async def stop(self) -> None:
+    """Active expiryタスクを停止"""
+    if not self._running:
+        return
+
+    self._running = False  # ループを停止
+
+    if self._task and not self._task.done():
+        self._task.cancel()  # タスクをキャンセル
+        try:
+            await self._task  # 完了を待つ
+        except asyncio.CancelledError:
+            pass
+
+    self._task = None
 ```
 
 
@@ -588,7 +758,7 @@ async def _active_expiry_loop(self) -> None:
 2. 有効期限管理メソッドを追加
    - `set_expiry(key: str, expiry_at: int)`: キーの有効期限（Unixタイムスタンプ）を設定
    - `get_expiry(key: str) -> int | None`: キーの有効期限を取得
-   - `get_keys_with_expiry() -> list[str]`: 有効期限が設定されたキー一覧を取得
+   - `get_all_keys() -> list[str]`: キー一覧を取得
 
 #### 実装のポイント
 
@@ -604,9 +774,9 @@ def get_expiry(self, key: str) -> int | None:
     entry = self._data.get(key)
     return entry.expiry_at if entry else None
 
-def get_keys_with_expiry(self) -> list[str]:
-    """有効期限が設定されたキー一覧を取得する"""
-    return [key for key, entry in self._data.items() if entry.expiry_at is not None]
+def get_all_keys(self) -> list[str]:
+    """全てのキー一覧を取得する"""
+    return list(self._data.keys())
 ```
 
 ### パート1: ExpiryManagerの実装（15分）
@@ -620,100 +790,51 @@ def get_keys_with_expiry(self) -> list[str]:
 3. `set_expiry()` と `get_ttl()` を実装
    - 有効期限を設定
    - 残り有効期限（TTL）を取得
-4. `start_active_expiry()` と `_active_expiry_loop()` を実装（Active Expiry）
+4. `start()` と `stop()` を実装（Active Expiry）
+   - バックグラウンドタスクの起動・停止
+5. `_run_active_expiry()` と `_active_expiry_cycle()` を実装
    - 1秒ごとにバックグラウンドタスクを実行
    - ランダムに20キーをサンプリング
    - 期限切れキーを削除
    - 削除率が25%を超える場合は即座に再実行
+
+#### 実装のポイント
+
+```python
+# set_expiry: 秒数 → Unixタイムスタンプ
+def set_expiry(self, key: str, seconds: int) -> None:
+    expiry_time = int(time.time()) + seconds
+    self._store.set_expiry(key, expiry_time)
+
+# get_ttl: Unixタイムスタンプ → 残り秒数
+def get_ttl(self, key: str) -> int | None:
+    expiry_time = self._store.get_expiry(key)
+    if expiry_time is None:
+        return None
+    return max(0, expiry_time - int(time.time()))
+```
 
 ### パート2: EXPIRE/TTLコマンドの実装（10分）
 
 #### 実装する内容
 
 1. `mini_redis/commands.py` を開く
-2. `Commands.__init__()` に `ExpiryManager` を追加
+2. `CommandHandler.__init__()` に `ExpiryManager` を追加
 3. EXPIRE/TTLコマンドのルーティングを追加
 4. `execute_expire()` と `execute_ttl()` を実装
-5. 既存の `execute_get()` と `execute_incr()` にPassive Expiryのチェックを追加
 
-### パート3: Commandsクラスの統合（5分）
+### パート3: Passive Expiryのコマンドへの組み込み（5分）
 
 #### 実装する内容
+1. `mini_redis/commands.py` を開く
+2. 既存の `execute_get()`, `execute_incr()`, `execute_expire()`, `execute_ttl()` にPassive Expiryのチェックを追加
 
-1. `mini_redis/commands.py` の `execute()` メソッドにEXPIRE/TTLのルーティングを追加
-2. GET/INCRコマンドにPassive Expiryチェックを追加
+### パート4: Active Expiryのサーバ起動への組み込み（5分）
 
-### 実装のポイント
-
-#### 1. Passive Expiry
-
-```python
-def check_and_remove_expired(self, key: str) -> bool:
-    """キーが期限切れかチェックし、期限切れなら削除する"""
-    # 有効期限を取得
-    expiry_time = self._store.get_expiry(key)
-
-    if expiry_time is None:
-        # 有効期限が設定されていない
-        return False
-
-    # 現在時刻と比較
-    current_time = int(time.time())
-
-    if current_time >= expiry_time:
-        # 期限切れ: キーを削除
-        self._store.delete(key)
-        return True
-
-    # 期限内
-    return False
-```
-
-#### 2. Active Expiry
-
-```python
-async def _active_expiry_loop(self) -> None:
-    """Active Expiryのメインループ"""
-    try:
-        while True:
-            # 1秒待機
-            await asyncio.sleep(1)
-
-            # サンプリングと削除を実行
-            await self._sample_and_remove_expired()
-
-    except asyncio.CancelledError:
-        # タスクがキャンセルされた
-        pass
-
-async def _sample_and_remove_expired(self) -> None:
-    """ランダムサンプリングして期限切れキーを削除"""
-    while True:
-        # 有効期限が設定されたキー一覧を取得
-        keys_with_expiry = self._store.get_keys_with_expiry()
-
-        if not keys_with_expiry:
-            break
-
-        # ランダムに最大20個サンプリング
-        sample_size = min(20, len(keys_with_expiry))
-        sample = random.sample(keys_with_expiry, sample_size)
-
-        # 期限切れキーを削除
-        expired_count = 0
-        for key in sample:
-            if self.check_and_remove_expired(key):
-                expired_count += 1
-
-        # 削除率を計算
-        deletion_rate = expired_count / len(sample)
-
-        # 削除率が25%以下なら終了
-        if deletion_rate <= 0.25:
-            break
-
-        # 削除率が25%超なら再実行
-```
+#### 実装する内容
+1. `mini_redis/server.py` を開く
+2. `TCPServer.start()` メソッド内でActive Expiryタスクを起動
+3. `TCPServer.stop()` メソッド内でActive Expiryタスクを停止
 
 ### テストで確認
 
@@ -759,74 +880,6 @@ OK
 # 10秒後（アクセスしない）
 > TTL temp
 (integer) -2  # Active Expiryで削除された
-```
-
-### Active Expiryの効果を確認
-
-```bash
-# 100個のキーに5秒の期限を設定
-> SET key:0 "val0"
-OK
-> EXPIRE key:0 5
-(integer) 1
-
-# ... (99回繰り返す)
-
-# 5秒後、ランダムなキーにアクセス
-> GET key:42
-(nil)  # Active Expiryで削除済み
-```
-
-## よくある間違いと対処法
-
-### 1. Passive Expiryの呼び出し忘れ
-
-有効期限関連のコマンド（GET、INCR、EXPIRE、TTL）では、必ず最初にPassive Expiryチェックを行う必要があります。
-
-```python
-# ❌ 間違い
-async def execute_get(self, args: list[str]) -> BulkString:
-    key = args[0]
-    return BulkString(self._store.get(key))  # 期限チェックなし
-
-# ✅ 正しい
-async def execute_get(self, args: list[str]) -> BulkString:
-    key = args[0]
-    # Passive Expiry: 期限切れチェック
-    if self._expiry.check_and_remove_expired(key):
-        return BulkString(None)
-    return BulkString(self._store.get(key))
-```
-
-### 2. set_expiryとget_ttlの実装順序
-
-`set_expiry()`は秒数を受け取ってUnixタイムスタンプに変換しますが、`get_ttl()`はその逆の処理を行います。
-
-```python
-# set_expiry: 秒数 → Unixタイムスタンプ
-def set_expiry(self, key: str, seconds: int) -> None:
-    expiry_time = int(time.time()) + seconds
-    self._storage.set_expiry(key, expiry_time)
-
-# get_ttl: Unixタイムスタンプ → 残り秒数
-def get_ttl(self, key: str) -> int | None:
-    expiry_time = self._storage.get_expiry(key)
-    if expiry_time is None:
-        return None
-    return max(0, expiry_time - int(time.time()))
-```
-
-## テストの実行
-
-```bash
-# すべてのテストを実行
-pytest tests/step04_expiry/ -v
-
-# ExpiryManagerのテスト
-pytest tests/step04_expiry/test_expiry.py -v
-
-# EXPIRE/TTLコマンドのテスト
-pytest tests/step04_expiry/test_commands.py -v
 ```
 
 ## 次のステップ

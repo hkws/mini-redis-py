@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 @dataclass
 class StoreEntry:
     value: str
-    expiry_at: float | None = field(default=None)
+    expiry_at: int | None = field(default=None)
 
 class DataStore:
     def __init__(self) -> None:
@@ -385,10 +385,10 @@ async def handle(self, reader: StreamReader, writer: StreamWriter) -> None:
 
     try:
         while True:
-            # コマンドをパース
-            command = await self._parser.parse_command(reader)
+            try:                
+                # コマンドをパース
+                command = await self._parser.parse_command(reader)
 
-            try:
                 # コマンドを実行（型ラッパーが返ってくる）
                 result = await self._handler.execute(command)
 
@@ -398,6 +398,16 @@ async def handle(self, reader: StreamReader, writer: StreamWriter) -> None:
             except CommandError as e:
                 # コマンド実行エラー（RedisErrorでラップしてエンコード）
                 response = self._parser.encode_response(RedisError(str(e)))
+
+            except asyncio.IncompleteReadError:
+                # クライアントが接続を切断した
+                logger.info(f"Client disconnected: {addr}")
+                break
+
+            except ConnectionResetError:
+                # 接続がリセットされた
+                logger.info(f"Connection reset: {addr}")
+                break
 
             except Exception as e:
                 # 予期しないエラー

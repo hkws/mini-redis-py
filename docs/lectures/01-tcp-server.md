@@ -475,6 +475,11 @@ async def handle(self, reader: StreamReader, writer: StreamWriter) -> None:
                 logger.info("Client disconnected")
                 break
 
+            except ConnectionResetError:
+                # 接続がリセットされた
+                logger.info(f"Connection reset: {addr}")
+                break
+
             except asyncio.CancelledError:
                 # サーバシャットダウン
                 logger.info("Server shutting down")

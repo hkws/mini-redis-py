@@ -2,19 +2,25 @@
 
 このモジュールは、TCPサーバの起動と管理、
 および個別クライアント接続の処理を担当します。
+
+【実装順序のガイド】
+1. ClientHandler.handle() - クライアント接続の処理ループ
+   - コマンドの読み取り→パース→実行→応答
+   - 結果の型判定とエンコード
+   - エラーハンドリング
+
+注意: TCPServer.start()とstop()は実装済みです。
+     ClientHandler.handle()のみ実装してください。
 """
 
 import asyncio
 import logging
 from asyncio import StreamReader, StreamWriter
-from typing import TYPE_CHECKING
 
-from .commands import CommandHandler, CommandError
-from .protocol import RESPParser, RESPProtocolError
-
-if TYPE_CHECKING:
-    from .expiry import ExpiryManager
-    from .storage import DataStore
+from solutions.mini_redis.commands import CommandHandler, CommandError
+from solutions.mini_redis.protocol import RESPParser, RESPProtocolError, RedisError
+from solutions.mini_redis.expiry import ExpiryManager
+from solutions.mini_redis.storage import DataStore
 
 logger = logging.getLogger(__name__)
 
@@ -27,12 +33,14 @@ class TCPServer:
     - クライアントセッションの管理
     - サーバのライフサイクル管理
     - Active Expiryバックグラウンドタスクの管理
+
+    注意: このクラスは実装済みです。変更する必要はありません。
     """
 
     def __init__(
         self,
         host: str = "127.0.0.1",
-        port: int = 6379,
+        port: int = 16379,
         store: "DataStore | None" = None,
         expiry: "ExpiryManager | None" = None,
         client_handler: "ClientHandler | None" = None,
@@ -59,10 +67,12 @@ class TCPServer:
         Active Expiryバックグラウンドタスクを起動し、TCPサーバを開始する。
         このメソッドはserve_forever()内で無限ループするため、
         KeyboardInterruptや例外が発生するまで戻らない。
+
+        注意: このメソッドは実装済みです。変更する必要はありません。
         """
         # 依存性の初期化（未指定の場合は新規作成）
-        from .expiry import ExpiryManager
-        from .storage import DataStore
+        from mini_redis.expiry import ExpiryManager
+        from mini_redis.storage import DataStore
 
         store = self._store if self._store is not None else DataStore()
         expiry = self._expiry if self._expiry is not None else ExpiryManager(store)
@@ -96,6 +106,8 @@ class TCPServer:
         """サーバを停止し、すべての接続をクローズする.
 
         Active Expiryタスクを停止し、TCPサーバをクローズする。
+
+        注意: このメソッドは実装済みです。変更する必要はありません。
         """
         logger.info("Stopping Mini-Redis server...")
 
@@ -113,10 +125,6 @@ class TCPServer:
 
 class ClientHandler:
     """クライアント接続のハンドラ.
-
-    責務:
-    - 個別クライアントとの通信ループ
-    - リクエスト受信→レスポンス送信
     """
 
     def __init__(self, parser: RESPParser, handler: CommandHandler) -> None:
@@ -135,58 +143,53 @@ class ClientHandler:
         Args:
             reader: asyncioのStreamReader
             writer: asyncioのStreamWriter
-
-        コマンドの読み取り→パース→実行→応答のループを実行する。
-        接続切断時に適切にクリーンアップする。
-        """
         
+        01-tcp-server.mdの実装パートでは、このメソッドを
+        サーバーがエコーサーバーとして振る舞うように完成させてください。
+        03-commands.mdの実装パートでは、このメソッドを
+        コマンドのパース、実行、応答送信の流れで実装してください。
+        """
+
         addr = writer.get_extra_info("peername")
         logger.info(f"Client connected: {addr}")
 
         try:
             while True:
-                try:
+                try:                
                     # コマンドをパース
                     command = await self._parser.parse_command(reader)
 
-                    # コマンドを実行
+                    # コマンドを実行（型ラッパーが返ってくる）
                     result = await self._handler.execute(command)
 
-                    # 実行結果をRESP形式にエンコード
-                    if isinstance(result, str):
-                        response = self._parser.encode_simple_string(result)
-                    elif isinstance(result, int):
-                        response = self._parser.encode_integer(result)
-                    else:  # result is None
-                        response = self._parser.encode_bulk_string(None)
-
-                    # 応答を送信
-                    writer.write(response)
-                    await writer.drain()
+                    # 応答をエンコード（型ラッパーに基づいて適切な形式に変換）
+                    response = self._parser.encode_response(result)
 
                 except CommandError as e:
-                    error_msg = str(e)
-                    response = self._parser.encode_error(error_msg)
-                    writer.write(response)
-                    await writer.drain()
-
-                except RESPProtocolError as e:
-                    logger.error(f"RESP protocol error from {addr}: {e}")
-                    break
+                    # コマンド実行エラー（RedisErrorでラップしてエンコード）
+                    response = self._parser.encode_response(RedisError(str(e)))
 
                 except asyncio.IncompleteReadError:
+                    # クライアントが接続を切断した
                     logger.info(f"Client disconnected: {addr}")
                     break
 
-                except asyncio.CancelledError:
-                    logger.info(f"Connection to {addr} cancelled due to server shutdown")
-                    raise
-
-                except Exception as e:
-                    logger.error(f"Unexpected error from {addr}: {e}")
+                except ConnectionResetError:
+                    # 接続がリセットされた
+                    logger.info(f"Connection reset: {addr}")
                     break
 
+                except Exception as e:
+                    # 予期しないエラー
+                    logger.exception("Unexpected error")
+                    response = self._parser.encode_response(RedisError("ERR internal server error"))
+
+                # 応答を送信
+                writer.write(response)
+                await writer.drain()
+
         finally:
+            # 必ずクリーンアップ
             writer.close()
             await writer.wait_closed()
             logger.info(f"Connection closed: {addr}")

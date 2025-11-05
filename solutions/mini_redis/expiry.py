@@ -1,6 +1,7 @@
 """Expiry management for Mini-Redis keys.
 
 このモジュールは、キーの有効期限管理（Passive + Active expiration）を担当します。
+
 """
 
 import asyncio
@@ -8,7 +9,8 @@ import logging
 import random
 import time
 
-from .storage import DataStore
+# NOTE: DataStoreは別ファイルで定義されています
+# from mini_redis.storage import DataStore
 
 logger = logging.getLogger(__name__)
 
@@ -35,50 +37,45 @@ class ExpiryManager:
     - stop(): Active expiryタスクを停止
     """
 
-    def __init__(self, store: DataStore) -> None:
+    def __init__(self, store) -> None:
         """マネージャを初期化.
 
         Args:
-            store: データストアのインスタンス
+            store: DataStoreのインスタンス
+
         """
         self._store = store
         self._task: asyncio.Task[None] | None = None
         self._running = False
 
     def check_and_remove_expired(self, key: str) -> bool:
-        """Passive expiry: キーが期限切れかチェックし、期限切れなら削除.
+        """
+        キーが期限切れかチェックし、期限切れなら削除する
 
         Args:
             key: チェックするキー
 
         Returns:
-            True: キーが期限切れで削除された
-            False: キーは有効または存在しない
-
-        実装のヒント:
-        1. キーが存在しない場合はFalseを返す
-        2. 有効期限が設定されていない場合はFalseを返す
-        3. time.time()で現在時刻を取得し、expiry_atと比較
-        4. 期限切れの場合はself._store.delete(key)で削除してTrueを返す
+            True: 期限切れで削除した
+            False: 期限内または期限未設定
         """
-        # 1. キーが存在しない場合はFalseを返す
-        if not self._store.exists(key):
+        # 有効期限を取得
+        expiry_time = self._store.get_expiry(key)
+
+        if expiry_time is None:
+            # 有効期限が設定されていない
             return False
 
-        # 2. 有効期限が設定されていない場合はFalseを返す
-        expiry_at = self._store.get_expiry(key)
-        if expiry_at is None:
-            return False
+        # 現在時刻と比較
+        current_time = int(time.time())
 
-        # 3. 現在時刻と比較
-        current_time = time.time()
-        if current_time < expiry_at:
-            # まだ有効期限内
-            return False
+        if current_time >= expiry_time:
+            # 期限切れ: キーを削除
+            self._store.delete(key)
+            return True
 
-        # 4. 期限切れの場合は削除
-        self._store.delete(key)
-        return True
+        # 期限内
+        return False
 
     async def start(self) -> None:
         """Active expiryタスクを開始.
@@ -124,12 +121,18 @@ class ExpiryManager:
         """
         try:
             logger.info("Active expiry task started")
+
             while self._running:
+                # 1秒待機
                 await asyncio.sleep(1)
+
+                # サンプリングと削除を実行
                 await self._active_expiry_cycle()
+
         except asyncio.CancelledError:
             logger.info("Active expiry task cancelled")
             raise
+
         finally:
             logger.info("Active expiry task finished")
 
@@ -140,23 +143,37 @@ class ExpiryManager:
         削除率がACTIVE_EXPIRY_THRESHOLD_PERCENT%を超える場合、即座に次のサンプリングを実行する。
         """
         while True:
-            # 全キーを取得
+            # すべてのキーを取得
             all_keys = self._store.get_all_keys()
 
-            # キーが存在しない場合は終了
             if not all_keys:
+                # キーが存在しない
                 break
 
-            # 最大ACTIVE_EXPIRY_SAMPLE_SIZEキーをサンプリング
+            # ランダムに最大20個サンプリング
             sample_size = min(ACTIVE_EXPIRY_SAMPLE_SIZE, len(all_keys))
             sampled_keys = random.sample(all_keys, sample_size)
 
-            # 各キーに対して期限チェックと削除を実行
+            # 期限切れキーを削除
             deleted_count = sum(
                 1 for key in sampled_keys if self.check_and_remove_expired(key)
             )
 
-            # 削除率を計算し、しきい値以下ならループを抜ける
+            # 削除率を計算
             deletion_rate = (deleted_count / sample_size) * 100
+
+            # 削除率が25%以下なら終了
             if deletion_rate <= ACTIVE_EXPIRY_THRESHOLD_PERCENT:
                 break
+
+            # 削除率が25%超なら再実行（即座に次のサンプリング）
+
+    def set_expiry(self, key: str, seconds: int) -> None:
+        expiry_time = int(time.time()) + seconds
+        self._store.set_expiry(key, expiry_time)
+
+    def get_ttl(self, key: str) -> int | None:
+        expiry_time = self._store.get_expiry(key)
+        if expiry_time is None:
+            return None
+        return max(0, expiry_time - int(time.time()))

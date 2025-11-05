@@ -38,9 +38,9 @@ class TestStep04ExpireCommand:
         handler = CommandHandler(store, expiry)
         store.set("key1", "value1")
 
-        result = await handler.execute_expire("key1", 10)
+        result = await handler.execute_expire(["key1", "10"])
 
-        assert result == 1
+        assert result.value == 1
         # 有効期限が設定されていることを確認
         assert store.get_expiry("key1") is not None
 
@@ -56,9 +56,9 @@ class TestStep04ExpireCommand:
         expiry = ExpiryManager(store)
         handler = CommandHandler(store, expiry)
 
-        result = await handler.execute_expire("nonexistent", 10)
+        result = await handler.execute_expire(["nonexistent", "10"])
 
-        assert result == 0
+        assert result.value == 0
 
     @pytest.mark.asyncio
     async def test_expire_returns_0_for_expired_key(self) -> None:
@@ -75,9 +75,9 @@ class TestStep04ExpireCommand:
         # 既に期限切れ
         store.set_expiry("key1", int(time.time()) - 1)
 
-        result = await handler.execute_expire("key1", 10)
+        result = await handler.execute_expire(["key1", "10"])
 
-        assert result == 0
+        assert result.value == 0
         # キーが削除されている
         assert store.exists("key1") is False
 
@@ -95,7 +95,7 @@ class TestStep04ExpireCommand:
         store.set("key1", "value1")
 
         with pytest.raises(CommandError, match="invalid expire time"):
-            await handler.execute_expire("key1", -1)
+            await handler.execute_expire(["key1", "-1"])
 
     @pytest.mark.asyncio
     async def test_expire_raises_error_for_non_integer_seconds(self) -> None:
@@ -111,7 +111,7 @@ class TestStep04ExpireCommand:
         store.set("key1", "value1")
 
         with pytest.raises(CommandError, match="not an integer"):
-            await handler.execute_expire("key1", "not_a_number")  # type: ignore
+            await handler.execute_expire(["key1", "not_a_number"])
 
     @pytest.mark.asyncio
     async def test_expire_updates_existing_expiry(self) -> None:
@@ -127,12 +127,12 @@ class TestStep04ExpireCommand:
         store.set("key1", "value1")
 
         # 最初の有効期限を設定
-        await handler.execute_expire("key1", 10)
+        await handler.execute_expire(["key1", "10"])
         first_expiry = store.get_expiry("key1")
 
         # 有効期限を更新
         time.sleep(0.1)
-        await handler.execute_expire("key1", 20)
+        await handler.execute_expire(["key1", "20"])
         second_expiry = store.get_expiry("key1")
 
         # 2回目の方が後の時刻
@@ -157,9 +157,9 @@ class TestStep04TTLCommand:
         expiry = ExpiryManager(store)
         handler = CommandHandler(store, expiry)
 
-        result = await handler.execute_ttl("nonexistent")
+        result = await handler.execute_ttl(["nonexistent"])
 
-        assert result == -2
+        assert result.value == -2
 
     @pytest.mark.asyncio
     async def test_ttl_returns_negative_1_for_key_without_expiry(self) -> None:
@@ -169,9 +169,9 @@ class TestStep04TTLCommand:
         handler = CommandHandler(store, expiry)
         store.set("key1", "value1")
 
-        result = await handler.execute_ttl("key1")
+        result = await handler.execute_ttl(["key1"])
 
-        assert result == -1
+        assert result.value == -1
 
     @pytest.mark.asyncio
     async def test_ttl_returns_remaining_seconds(self) -> None:
@@ -188,7 +188,8 @@ class TestStep04TTLCommand:
         store.set("key1", "value1")
         store.set_expiry("key1", int(time.time()) + 10)
 
-        result = await handler.execute_ttl("key1")
+        result = await handler.execute_ttl(["key1"])
+        result = result.value
 
         # 9秒以上10秒以下（タイムラグを考慮）
         assert 9 <= result <= 10
@@ -208,9 +209,9 @@ class TestStep04TTLCommand:
         # 既に期限切れ
         store.set_expiry("key1", int(time.time()) - 1)
 
-        result = await handler.execute_ttl("key1")
+        result = await handler.execute_ttl(["key1"])
 
-        assert result == -2
+        assert result.value == -2
         # キーが削除されている
         assert store.exists("key1") is False
 
@@ -229,10 +230,10 @@ class TestStep04TTLCommand:
         # ほぼ同時刻を設定（まだ削除されていない）
         store.set_expiry("key1", int(time.time()))
 
-        result = await handler.execute_ttl("key1")
+        result = await handler.execute_ttl(["key1"])
 
         # 0または-2（Passive Expiryで削除された場合）
-        assert result in [0, -2]
+        assert result.value in [0, -2]
 
 
 class TestStep04PassiveExpiryIntegration:
@@ -254,9 +255,9 @@ class TestStep04PassiveExpiryIntegration:
         # 既に期限切れ
         store.set_expiry("key1", int(time.time()) - 1)
 
-        result = await handler.execute_get("key1")
+        result = await handler.execute_get(["key1"])
 
-        assert result is None
+        assert result.value is None
         # キーが削除されている
         assert store.exists("key1") is False
 
@@ -276,9 +277,9 @@ class TestStep04PassiveExpiryIntegration:
         # 10秒後に期限切れ
         store.set_expiry("key1", int(time.time()) + 10)
 
-        result = await handler.execute_get("key1")
+        result = await handler.execute_get(["key1"])
 
-        assert result == "value1"
+        assert result.value == "value1"
         assert store.exists("key1") is True
 
     @pytest.mark.asyncio
@@ -297,9 +298,9 @@ class TestStep04PassiveExpiryIntegration:
         # 既に期限切れ
         store.set_expiry("counter", int(time.time()) - 1)
 
-        result = await handler.execute_incr("counter")
+        result = await handler.execute_incr(["counter"])
 
-        assert result == 1
+        assert result.value == 1
         assert store.get("counter") == "1"
 
     @pytest.mark.asyncio
@@ -318,9 +319,9 @@ class TestStep04PassiveExpiryIntegration:
         # 10秒後に期限切れ
         store.set_expiry("counter", int(time.time()) + 10)
 
-        result = await handler.execute_incr("counter")
+        result = await handler.execute_incr(["counter"])
 
-        assert result == 6
+        assert result.value == 6
         assert store.get("counter") == "6"
         assert store.exists("counter") is True
 
@@ -339,18 +340,18 @@ class TestStep04PassiveExpiryIntegration:
         handler = CommandHandler(store, expiry)
 
         # キーを設定
-        await handler.execute_set("key1", "value1")
+        await handler.execute_set(["key1", "value1"])
 
         # 1秒の有効期限を設定
-        await handler.execute_expire("key1", 1)
+        await handler.execute_expire(["key1", "1"])
 
         # 期限内にGET（値が返る）
-        result1 = await handler.execute_get("key1")
-        assert result1 == "value1"
+        result1 = await handler.execute_get(["key1"])
+        assert result1.value == "value1"
 
         # 期限切れまで待機
         time.sleep(1.1)
 
         # 期限切れ後にGET（Noneが返る）
-        result2 = await handler.execute_get("key1")
-        assert result2 is None
+        result2 = await handler.execute_get(["key1"])
+        assert result2.value is None
