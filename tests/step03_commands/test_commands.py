@@ -1,6 +1,6 @@
 """Step 03: Redisコマンド実装のテスト
 
-このテストは、03-commands.mdで実装する6つの基本コマンドを検証します。
+このテストは、03-commands.mdで実装する4つの基本コマンドを検証します。
 
 テスト内容:
 - コマンドルーティング: execute()から各コマンドメソッドへの振り分け
@@ -8,8 +8,8 @@
 - GET: 値取得
 - SET: 値設定
 - INCR: インクリメント
-- EXPIRE: 有効期限設定
-- TTL: 残り有効期限取得
+
+注意: EXPIRE/TTLコマンドのテストは tests/step04_expiry/test_commands.py で実装します。
 
 講義資料: docs/lectures/03-commands.md (パート2: コマンド実行層)
 実行方法: pytest tests/step03_commands/test_commands.py -v
@@ -18,7 +18,6 @@
 import pytest
 
 from mini_redis.commands import CommandError, CommandHandler
-from mini_redis.expiry import ExpiryManager
 from mini_redis.storage import DataStore
 
 
@@ -35,8 +34,7 @@ class TestStep03CommandRouting:
         - 引数（command[1:]）を渡す
         """
         store = DataStore()
-        expiry = ExpiryManager(store)
-        handler = CommandHandler(store, expiry)
+        handler = CommandHandler(store, None)
 
         # PINGコマンド
         result = await handler.execute(["PING"])
@@ -51,8 +49,7 @@ class TestStep03CommandRouting:
         - 大文字小文字を区別しない
         """
         store = DataStore()
-        expiry = ExpiryManager(store)
-        handler = CommandHandler(store, expiry)
+        handler = CommandHandler(store, None)
 
         result = await handler.execute(["ping"])
         assert result == "PONG"
@@ -66,8 +63,7 @@ class TestStep03CommandRouting:
         - CommandError("ERR unknown command '{cmd_name}'")
         """
         store = DataStore()
-        expiry = ExpiryManager(store)
-        handler = CommandHandler(store, expiry)
+        handler = CommandHandler(store, None)
 
         with pytest.raises(CommandError, match="unknown command"):
             await handler.execute(["UNKNOWNCOMMAND"])
@@ -81,8 +77,7 @@ class TestStep03CommandRouting:
         - CommandError("ERR wrong number of arguments...")
         """
         store = DataStore()
-        expiry = ExpiryManager(store)
-        handler = CommandHandler(store, expiry)
+        handler = CommandHandler(store, None)
 
         # GETは引数が1つ必要
         with pytest.raises(CommandError, match="wrong number of arguments"):
@@ -105,11 +100,28 @@ class TestStep03PingCommand:
         - Simple Stringとしてエンコードされる
         """
         store = DataStore()
-        expiry = ExpiryManager(store)
-        handler = CommandHandler(store, expiry)
+        handler = CommandHandler(store, None)
 
-        result = await handler.execute_ping([])
+        result = await handler.execute_ping()
         assert result == "PONG"
+
+    @pytest.mark.asyncio
+    async def test_ping_str_returns_str(self) -> None:
+        """PINGコマンドが引数をそのまま返すことを検証.
+
+        仕様:
+        - 引数なし: "PONG"を返す
+        - 引数あり: 引数をそのまま返す
+
+        検証内容:
+        - 戻り値の型: str
+        - Simple Stringとしてエンコードされる
+        """
+        store = DataStore()
+        handler = CommandHandler(store, None)
+
+        result = await handler.execute_ping("Hello")
+        assert result == "Hello"
 
 
 class TestStep03GetCommand:
@@ -120,16 +132,16 @@ class TestStep03GetCommand:
         """存在するキーの値を返すことを検証.
 
         検証内容:
-        1. Passive Expiry: check_and_remove_expired()
-        2. storage.get(key)で値を取得
-        3. Bulk Stringとしてエンコードされる
+        1. storage.get(key)で値を取得
+        2. Bulk Stringとしてエンコードされる
+
+        注意: Passive Expiryのチェックは04-expiry.mdで追加します。
         """
         store = DataStore()
-        expiry = ExpiryManager(store)
-        handler = CommandHandler(store, expiry)
+        handler = CommandHandler(store, None)
         store.set("key1", "value1")
 
-        result = await handler.execute_get(["key1"])
+        result = await handler.execute_get("key1")
         assert result == "value1"
 
     @pytest.mark.asyncio
@@ -141,10 +153,9 @@ class TestStep03GetCommand:
         - Null Bulk String ($-1\\r\\n)としてエンコードされる
         """
         store = DataStore()
-        expiry = ExpiryManager(store)
-        handler = CommandHandler(store, expiry)
+        handler = CommandHandler(store, None)
 
-        result = await handler.execute_get(["nonexistent"])
+        result = await handler.execute_get("nonexistent")
         assert result is None
 
 
@@ -161,10 +172,9 @@ class TestStep03SetCommand:
         3. Simple Stringとしてエンコードされる
         """
         store = DataStore()
-        expiry = ExpiryManager(store)
-        handler = CommandHandler(store, expiry)
+        handler = CommandHandler(store, None)
 
-        result = await handler.execute_set(["key1", "value1"])
+        result = await handler.execute_set("key1", "value1")
         assert result == "OK"
         assert store.get("key1") == "value1"
 
@@ -174,14 +184,13 @@ class TestStep03SetCommand:
 
         検証内容:
         - set()は常に上書き
-        - 有効期限もクリアされる
+        - 有効期限もクリアされる（04-expiry.mdで検証）
         """
         store = DataStore()
-        expiry = ExpiryManager(store)
-        handler = CommandHandler(store, expiry)
+        handler = CommandHandler(store, None)
         store.set("key1", "old_value")
 
-        result = await handler.execute_set(["key1", "new_value"])
+        result = await handler.execute_set("key1", "new_value")
         assert result == "OK"
         assert store.get("key1") == "new_value"
 
@@ -194,16 +203,16 @@ class TestStep03IncrCommand:
         """存在しないキーに対して1を設定することを検証.
 
         検証内容:
-        1. Passive Expiry
-        2. キーが存在しない → 0から開始
-        3. storage.set(key, "1")
-        4. 1を返す（Integer型）
+        1. キーが存在しない → 0から開始
+        2. storage.set(key, "1")
+        3. 1を返す（Integer型）
+
+        注意: Passive Expiryのチェックは04-expiry.mdで追加します。
         """
         store = DataStore()
-        expiry = ExpiryManager(store)
-        handler = CommandHandler(store, expiry)
+        handler = CommandHandler(store, None)
 
-        result = await handler.execute_incr(["counter"])
+        result = await handler.execute_incr("counter")
         assert result == 1
         assert store.get("counter") == "1"
 
@@ -218,11 +227,10 @@ class TestStep03IncrCommand:
         4. new_valueを返す（Integer型）
         """
         store = DataStore()
-        expiry = ExpiryManager(store)
-        handler = CommandHandler(store, expiry)
+        handler = CommandHandler(store, None)
         store.set("counter", "5")
 
-        result = await handler.execute_incr(["counter"])
+        result = await handler.execute_incr("counter")
         assert result == 6
         assert store.get("counter") == "6"
 
@@ -235,99 +243,8 @@ class TestStep03IncrCommand:
         - CommandError("ERR value is not an integer or out of range")
         """
         store = DataStore()
-        expiry = ExpiryManager(store)
-        handler = CommandHandler(store, expiry)
+        handler = CommandHandler(store, None)
         store.set("key1", "not_an_integer")
 
         with pytest.raises(CommandError, match="not an integer"):
-            await handler.execute_incr(["key1"])
-
-
-class TestStep03ExpireCommand:
-    """Step 03: EXPIREコマンドのテスト."""
-
-    @pytest.mark.asyncio
-    async def test_expire_sets_expiry_for_existing_key(self) -> None:
-        """存在するキーに有効期限を設定することを検証.
-
-        検証内容:
-        1. Passive Expiry
-        2. キーの存在チェック
-        3. expiry.set_expiry(key, seconds)
-        4. 1を返す（Integer型）
-        """
-        store = DataStore()
-        expiry = ExpiryManager(store)
-        handler = CommandHandler(store, expiry)
-        store.set("key1", "value1")
-
-        result = await handler.execute_expire(["key1", 10])
-        assert result == 1
-        assert store.get_expiry("key1") is not None
-
-    @pytest.mark.asyncio
-    async def test_expire_returns_0_for_nonexistent_key(self) -> None:
-        """存在しないキーに対して0を返すことを検証.
-
-        検証内容:
-        - キーが存在しない → 0を返す
-        - 有効期限は設定されない
-        """
-        store = DataStore()
-        expiry = ExpiryManager(store)
-        handler = CommandHandler(store, expiry)
-
-        result = await handler.execute_expire(["nonexistent", 10])
-        assert result == 0
-
-
-class TestStep03TtlCommand:
-    """Step 03: TTLコマンドのテスト."""
-
-    @pytest.mark.asyncio
-    async def test_ttl_returns_negative_2_for_nonexistent_key(self) -> None:
-        """存在しないキーに対して-2を返すことを検証.
-
-        Redis仕様:
-        - -2: キーが存在しない
-        - -1: キーは存在するが有効期限なし
-        - 正の整数: 残り秒数
-        """
-        store = DataStore()
-        expiry = ExpiryManager(store)
-        handler = CommandHandler(store, expiry)
-
-        result = await handler.execute_ttl(["nonexistent"])
-        assert result == -2
-
-    @pytest.mark.asyncio
-    async def test_ttl_returns_negative_1_for_key_without_expiry(self) -> None:
-        """有効期限が設定されていないキーに対して-1を返すことを検証."""
-        store = DataStore()
-        expiry = ExpiryManager(store)
-        handler = CommandHandler(store, expiry)
-        store.set("key1", "value1")
-
-        result = await handler.execute_ttl(["key1"])
-        assert result == -1
-
-    @pytest.mark.asyncio
-    async def test_ttl_returns_remaining_seconds(self) -> None:
-        """残り有効秒数を返すことを検証.
-
-        検証内容:
-        1. Passive Expiry
-        2. expiry.get_ttl(key)で残り秒数を取得
-        3. expiry_time - current_time
-        """
-        import time
-
-        store = DataStore()
-        expiry = ExpiryManager(store)
-        handler = CommandHandler(store, expiry)
-        store.set("key1", "value1")
-        store.set_expiry("key1", time.time() + 10)
-
-        result = await handler.execute_ttl(["key1"])
-        # 9秒以上10秒以下（タイムラグを考慮）
-        assert 9 <= result <= 10
+            await handler.execute_incr("key1")

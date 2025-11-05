@@ -2,7 +2,7 @@
 
 ## 学習目標
 
-このセクションでは、コマンド実行部の役割と設計、6つの基本コマンドの仕様と実装（PING, GET, SET, INCR, EXPIRE, TTL）、エラーハンドリングのパターンとエラーメッセージの形式について学びます。
+このセクションでは、コマンド実行部の役割と設計、4つの基本コマンドの仕様と実装（PING, GET, SET, INCR）、エラーハンドリングのパターンとエラーメッセージの形式について学びます。
 
 所要時間: 約20分（理論5分＋実装15分）
 
@@ -12,7 +12,7 @@ RESPプロトコルのエンコード方法、そしてPythonの例外処理を�
 
 ## ストレージ操作（`storage.py`）
 
-まず、値の入出力を行う `DataStore`（`mini_redis/storage.py`）を実装していきましょう。`DataStore`は値の保存と取得、削除といった最小限の責務だけを持つこととします。また、後の有効期限管理の実装のために、値とともに有効期限情報も保持できるようにします。
+まず、値の入出力を行う `DataStore`（`mini_redis/storage.py`）を実装していきましょう。`DataStore`は値の保存と取得、削除といった最小限の責務だけを持つこととします。また、後のセクション（[04-expiry.md](04-expiry.md)）で有効期限管理を実装するために、値とともに有効期限情報も保持できる構造にしておきます。
 
 ### DataStore全体の骨格
 
@@ -92,40 +92,27 @@ graph TB
     ROUTE -->|GET| GET_EXEC[GETを実行]
     ROUTE -->|SET| SET_EXEC[SETを実行]
     ROUTE -->|INCR| INCR_EXEC[INCRを実行]
-    ROUTE -->|EXPIRE| EXPIRE_EXEC[EXPIREを実行]
-    ROUTE -->|TTL| TTL_EXEC[TTLを実行]
     ROUTE -->|その他| ERROR[未知のコマンドエラー]
 
     PING_EXEC --> VALIDATE1{引数検証}
     GET_EXEC --> VALIDATE2{引数検証}
     SET_EXEC --> VALIDATE3{引数検証}
     INCR_EXEC --> VALIDATE4{引数検証}
-    EXPIRE_EXEC --> VALIDATE5{引数検証}
-    TTL_EXEC --> VALIDATE6{引数検証}
 
     VALIDATE1 -->|OK| EXEC1[応答（PONG）を生成]
-    VALIDATE2 -->|OK| EXPIRY_CHECK[有効期限チェック]
+    VALIDATE2 -->|OK| EXEC2[データを取得]
     VALIDATE3 -->|OK| EXEC3[値を設定]
-    VALIDATE4 -->|OK| EXPIRY_CHECK2[有効期限チェック]
-    VALIDATE5 -->|OK| EXEC5[有効期限を設定]
-    VALIDATE6 -->|OK| EXEC6[有効期限を取得]
+    VALIDATE4 -->|OK| EXEC4[値を+1]
 
     VALIDATE1 -->|NG| INVALID[バリデーションエラー]
     VALIDATE2 -->|NG| INVALID
     VALIDATE3 -->|NG| INVALID
     VALIDATE4 -->|NG| INVALID
-    VALIDATE5 -->|NG| INVALID
-    VALIDATE6 -->|NG| INVALID
-
-    EXPIRY_CHECK --> EXEC2[データを取得]
-    EXPIRY_CHECK2 --> EXEC4[値を+1]
 
     EXEC1 --> RESPONSE[応答を返す]
     EXEC2 --> RESPONSE
     EXEC3 --> RESPONSE
     EXEC4 --> RESPONSE
-    EXEC5 --> RESPONSE
-    EXEC6 --> RESPONSE
     INVALID --> RESPONSE
     ERROR --> RESPONSE
 
@@ -138,15 +125,14 @@ graph TB
 
 ### 実装例
 
-実装例は以下のとおりです。ExpiryManagerは後のステップで実装しますが、ここではインターフェースだけを仮定しています。
+実装例は以下のとおりです。このセクションでは基本的な4つのコマンド（PING、GET、SET、INCR）のみを実装します。
 
 ```python
 from mini_redis.protocol import SimpleString, BulkString, Integer, RedisError, Array
 
 class Commands:
-    def __init__(self, storage: Storage, expiry: ExpiryManager):
+    def __init__(self, storage: Storage):
         self._store = storage
-        self._expiry = expiry
 
     async def execute(self, command: list[str]) -> SimpleString | BulkString | Integer | RedisError | Array:
         """コマンドを実行する"""
@@ -166,10 +152,6 @@ class Commands:
             return await self.execute_set(args)
         elif cmd_name == "INCR":
             return await self.execute_incr(args)
-        elif cmd_name == "EXPIRE":
-            return await self.execute_expire(args)
-        elif cmd_name == "TTL":
-            return await self.execute_ttl(args)
         else:
             raise CommandError(f"ERR unknown command '{cmd_name}'")
 
@@ -232,7 +214,6 @@ PONG
 応答:
 - キーが存在: 値を返す（Bulk String）
 - キーが存在しない: `None`（Null Bulk String）
-- キーが期限切れ: `None`（削除してからNull返却）
 
 実装例:
 
@@ -244,11 +225,6 @@ async def execute_get(self, args: list[str]) -> BulkString:
         raise CommandError("ERR wrong number of arguments for 'get' command")
 
     key = args[0]
-
-    # Passive Expiry: 期限切れチェック
-    if self._expiry.check_and_remove_expired(key):
-        # 期限切れなので削除済み（Null Bulk String）
-        return BulkString(None)
 
     # 値を取得（BulkStringでラップ）
     return BulkString(self._store.get(key))
@@ -337,12 +313,6 @@ async def execute_incr(self, args: list[str]) -> Integer:
 
     key = args[0]
 
-    # Passive Expiry: 期限切れチェック
-    if self._expiry.check_and_remove_expired(key):
-        # 期限切れなので、0から開始
-        self._store.set(key, "1")
-        return Integer(1)
-
     # 現在の値を取得
     current = self._store.get(key)
 
@@ -364,6 +334,8 @@ async def execute_incr(self, args: list[str]) -> Integer:
     return Integer(new_value)
 ```
 
+**注意**: 有効期限のチェック（Passive Expiry）は、次のセクション（[04-expiry.md](04-expiry.md)）で追加します。
+
 redis-cliでの実行例:
 
 ```bash
@@ -381,139 +353,6 @@ OK
 ```
 
 [ドキュメント](https://redis.io/docs/latest/commands/incr/)
-
-### 5. EXPIREコマンド
-
-用途: キーに有効期限（秒）を設定
-
-構文: `EXPIRE key seconds`
-
-応答:
-- キーが存在し、期限設定成功: `1`（Integer）
-- キーが存在しない: `0`（Integer）
-
-実装例:
-
-```python
-async def execute_expire(self, args: list[str]) -> Integer:
-    """EXPIREコマンドを実行"""
-    # 引数検証
-    if len(args) != 2:
-        raise CommandError("ERR wrong number of arguments for 'expire' command")
-
-    key = args[0]
-
-    # 秒数を整数に変換
-    try:
-        seconds = int(args[1])
-    except ValueError:
-        raise CommandError("ERR value is not an integer or out of range")
-
-    # 負の秒数はエラー
-    if seconds < 0:
-        raise CommandError("ERR invalid expire time in 'expire' command")
-
-    # Passive Expiry: 期限切れチェック
-    if self._expiry.check_and_remove_expired(key):
-        # 期限切れなので存在しない
-        return Integer(0)
-
-    # キーが存在するかチェック
-    if self._store.get(key) is None:
-        return Integer(0)
-
-    # 有効期限を設定
-    self._store_.set_expiry(key, seconds)
-    return Integer(1)
-```
-
-redis-cliでの実行例:
-
-```bash
-> SET mykey "Hello"
-OK
-
-> EXPIRE mykey 60
-(integer) 1
-
-> EXPIRE nonexistent 60
-(integer) 0
-
-> TTL mykey
-(integer) 59
-```
-
-[ドキュメント](https://redis.io/docs/latest/commands/expire/)
-
-### 6. TTLコマンド
-
-用途: キーの残り有効期限（秒）を取得
-
-構文: `TTL key`
-
-応答:
-- 有効期限あり: 残り秒数（Integer）
-- 有効期限なし: `-1`（Integer）
-- キーが存在しない: `-2`（Integer）
-
-実装:
-
-```python
-async def execute_ttl(self, args: list[str]) -> Integer:
-    """TTLコマンドを実行"""
-    # 引数検証
-    if len(args) != 1:
-        raise CommandError("ERR wrong number of arguments for 'ttl' command")
-
-    key = args[0]
-
-    # Passive Expiry: 期限切れチェック
-    if self._expiry.check_and_remove_expired(key):
-        # 期限切れなので存在しない
-        return Integer(-2)
-
-    # キーが存在するかチェック
-    if self._store.get(key) is None:
-        return Integer(-2)
-
-    # 有効期限を取得
-    ttl = self._store_.get_ttl(key)
-
-    if ttl is None:
-        # 有効期限が設定されていない
-        return Integer(-1)
-
-    # 残り秒数を計算
-    remaining = int(expiry_at - time.time())
-    return Integer(ttl)
-```
-
-redis-cliでの実行例:
-
-```bash
-> SET mykey "Hello"
-OK
-
-> EXPIRE mykey 60
-(integer) 1
-
-> TTL mykey
-(integer) 59
-
-> TTL mykey
-(integer) 58
-
-> SET persistent "forever"
-OK
-
-> TTL persistent
-(integer) -1
-
-> TTL nonexistent
-(integer) -2
-```
-
-[ドキュメント](https://redis.io/docs/latest/commands/ttl/)
 
 ## エラーハンドリング
 
@@ -590,11 +429,6 @@ async def handle_client(reader: StreamReader, writer: StreamWriter) -> None:
    - `get()`: キーの値を取得
    - `set()`: キーに値を設定
    - `delete()`: キーを削除
-   - `exists()`: キーの存在確認
-3. 有効期限管理を実装
-   - `set_expiry()`: 有効期限を設定
-   - `get_expiry()`: 有効期限を取得
-   - `get_all_keys()`: すべてのキーを取得
 
 #### テストで確認
 
@@ -615,10 +449,6 @@ pytest tests/step03_commands/test_storage.py -v
    - `execute_get()`: キーの値を取得
    - `execute_set()`: キーに値を設定
    - `execute_incr()`: 値を1増加
-   - `execute_expire()`: 有効期限を設定
-   - `execute_ttl()`: 残り有効秒数を取得
-
-**重要**: GET/INCR/EXPIRE/TTLの最初で `check_and_remove_expired(key)` を呼び出す（Passive Expiry）
 
 #### 実装のポイント
 
@@ -637,13 +467,13 @@ async def execute_ping(self, args: list[str]) -> SimpleString | BulkString:
 **2. INCRコマンド（型エラー処理に注意）**
 
 ```python
-async def execute_incr(self, key: str) -> Integer:
-    # Passive Expiryチェック
-    if self._expiry.check_and_remove_expired(key):
-        self._store.set(key, "1")
-        return Integer(1)
+async def execute_incr(self, args: list[str]) -> Integer:
+    if len(args) != 1:
+        raise CommandError("ERR wrong number of arguments for 'incr' command")
 
+    key = args[0]
     current = self._store.get(key)
+
     if current is None:
         self._store.set(key, "1")
         return Integer(1)
@@ -661,20 +491,7 @@ async def execute_incr(self, key: str) -> Integer:
 
 #### よくある間違いと対処法
 
-**1. Passive Expiryの呼び出し忘れ**
-
-```python
-# ❌ 間違い
-async def execute_get(self, key: str) -> BulkString:
-    return BulkString(self._store.get(key))  # 期限チェックなし
-
-# ✅ 正しい
-async def execute_get(self, key: str) -> BulkString:
-    self._expiry.check_and_remove_expired(key)  # 期限チェック
-    return BulkString(self._store.get(key))
-```
-
-**2. INCRコマンドの型エラー処理忘れ**
+**1. INCRコマンドの型エラー処理忘れ**
 
 ```python
 # ❌ 間違い

@@ -7,10 +7,6 @@
 
 import time
 
-# NOTE: ExpiryManagerとDataStoreは別ファイルで定義されています
-# from mini_redis.expiry import ExpiryManager
-# from mini_redis.storage import DataStore
-
 CommandResult = str | int | None
 
 
@@ -77,11 +73,13 @@ class CommandHandler:
         #    - execute_incr(args[0])を呼び出す
 
         # 5. EXPIRE:
+        #    - 04-expiry.mdで実装
         #    - 引数が2個であることを確認（でなければCommandError）
         #    - args[1]をint()で整数に変換（ValueErrorの場合はCommandError）
         #    - execute_expire(args[0], seconds)を呼び出す
 
         # 6. TTL:
+        #    - 04-expiry.mdで実装
         #    - 引数が1個であることを確認（でなければCommandError）
         #    - execute_ttl(args[0])を呼び出す
 
@@ -90,8 +88,8 @@ class CommandHandler:
 
         raise NotImplementedError("execute()を実装してください")
 
-    async def execute_ping(self) -> str:
-        """PING: 常に'PONG'を返す.
+    async def execute_ping(self, msg: str | None = None) -> str:
+        """PING: "PONG"または入力された文字列を返す.
 
         Returns:
             "PONG"

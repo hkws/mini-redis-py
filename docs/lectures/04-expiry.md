@@ -2,9 +2,9 @@
 
 ## 学習目標
 
-このセクションでは、有効期限管理の必要性とユースケース、Passive Expiryの動作原理と実装、Active Expiryの動作原理とアルゴリズム、asyncioでのバックグラウンドタスクの実装について学びます。
+このセクションでは、有効期限管理の必要性とユースケース、Passive Expiryの動作原理と実装、Active Expiryの動作原理とアルゴリズム、EXPIRE/TTLコマンドの実装、asyncioでのバックグラウンドタスクの実装について学びます。
 
-所要時間: 約20分（理論5分＋実装15分）
+所要時間: 約30分（理論10分＋実装20分）
 
 ## 前提知識
 
@@ -311,6 +311,215 @@ SAMPLE_SIZE = 10       # 10個サンプリング
 THRESHOLD = 0.30       # 30%閾値
 ```
 
+## EXPIRE/TTLコマンドの実装
+
+有効期限管理のためには、EXPIREとTTLの2つのコマンドが必要です。前のセクションでは基本的な4つのコマンドを実装しましたが、ここではこれらの有効期限関連のコマンドを追加します。
+
+### 1. EXPIREコマンド
+
+用途: キーに有効期限（秒）を設定
+
+構文: `EXPIRE key seconds`
+
+応答:
+- キーが存在し、期限設定成功: `1`（Integer）
+- キーが存在しない: `0`（Integer）
+
+実装例:
+
+```python
+async def execute_expire(self, args: list[str]) -> Integer:
+    """EXPIREコマンドを実行"""
+    # 引数検証
+    if len(args) != 2:
+        raise CommandError("ERR wrong number of arguments for 'expire' command")
+
+    key = args[0]
+
+    # 秒数を整数に変換
+    try:
+        seconds = int(args[1])
+    except ValueError:
+        raise CommandError("ERR value is not an integer or out of range")
+
+    # 負の秒数はエラー
+    if seconds < 0:
+        raise CommandError("ERR invalid expire time in 'expire' command")
+
+    # Passive Expiry: 期限切れチェック
+    if self._expiry.check_and_remove_expired(key):
+        # 期限切れなので存在しない
+        return Integer(0)
+
+    # キーが存在するかチェック
+    if self._store.get(key) is None:
+        return Integer(0)
+
+    # 有効期限を設定
+    self._expiry.set_expiry(key, seconds)
+    return Integer(1)
+```
+
+redis-cliでの実行例:
+
+```bash
+> SET mykey "Hello"
+OK
+
+> EXPIRE mykey 60
+(integer) 1
+
+> EXPIRE nonexistent 60
+(integer) 0
+
+> TTL mykey
+(integer) 59
+```
+
+[ドキュメント](https://redis.io/docs/latest/commands/expire/)
+
+### 2. TTLコマンド
+
+用途: キーの残り有効期限（秒）を取得
+
+構文: `TTL key`
+
+応答:
+- 有効期限あり: 残り秒数（Integer）
+- 有効期限なし: `-1`（Integer）
+- キーが存在しない: `-2`（Integer）
+
+実装:
+
+```python
+async def execute_ttl(self, args: list[str]) -> Integer:
+    """TTLコマンドを実行"""
+    # 引数検証
+    if len(args) != 1:
+        raise CommandError("ERR wrong number of arguments for 'ttl' command")
+
+    key = args[0]
+
+    # Passive Expiry: 期限切れチェック
+    if self._expiry.check_and_remove_expired(key):
+        # 期限切れなので存在しない
+        return Integer(-2)
+
+    # キーが存在するかチェック
+    if self._store.get(key) is None:
+        return Integer(-2)
+
+    # 有効期限を取得
+    ttl = self._expiry.get_ttl(key)
+
+    if ttl is None:
+        # 有効期限が設定されていない
+        return Integer(-1)
+
+    return Integer(ttl)
+```
+
+redis-cliでの実行例:
+
+```bash
+> SET mykey "Hello"
+OK
+
+> EXPIRE mykey 60
+(integer) 1
+
+> TTL mykey
+(integer) 59
+
+> TTL mykey
+(integer) 58
+
+> SET persistent "forever"
+OK
+
+> TTL persistent
+(integer) -1
+
+> TTL nonexistent
+(integer) -2
+```
+
+[ドキュメント](https://redis.io/docs/latest/commands/ttl/)
+
+### commands.pyへの統合
+
+前のセクションで実装した`Commands`クラスに、EXPIRE/TTLコマンドのルーティングを追加します。また、既存のGET/INCRコマンドにもPassive Expiryのチェックを追加します。
+
+```python
+class Commands:
+    def __init__(self, storage: Storage, expiry: ExpiryManager):
+        self._store = storage
+        self._expiry = expiry
+
+    async def execute(self, command: list[str]) -> SimpleString | BulkString | Integer | RedisError | Array:
+        """コマンドを実行する"""
+        if not command:
+            raise CommandError("ERR empty command")
+
+        cmd_name = command[0].upper()
+        args = command[1:]
+
+        # ルーティング（EXPIRE/TTLを追加）
+        if cmd_name == "PING":
+            return await self.execute_ping(args)
+        elif cmd_name == "GET":
+            return await self.execute_get(args)
+        elif cmd_name == "SET":
+            return await self.execute_set(args)
+        elif cmd_name == "INCR":
+            return await self.execute_incr(args)
+        elif cmd_name == "EXPIRE":
+            return await self.execute_expire(args)
+        elif cmd_name == "TTL":
+            return await self.execute_ttl(args)
+        else:
+            raise CommandError(f"ERR unknown command '{cmd_name}'")
+
+    async def execute_get(self, args: list[str]) -> BulkString:
+        """GETコマンドを実行（Passive Expiry追加）"""
+        if len(args) != 1:
+            raise CommandError("ERR wrong number of arguments for 'get' command")
+
+        key = args[0]
+
+        # Passive Expiry: 期限切れチェック
+        if self._expiry.check_and_remove_expired(key):
+            return BulkString(None)
+
+        return BulkString(self._store.get(key))
+
+    async def execute_incr(self, args: list[str]) -> Integer:
+        """INCRコマンドを実行（Passive Expiry追加）"""
+        if len(args) != 1:
+            raise CommandError("ERR wrong number of arguments for 'incr' command")
+
+        key = args[0]
+
+        # Passive Expiry: 期限切れチェック
+        if self._expiry.check_and_remove_expired(key):
+            self._store.set(key, "1")
+            return Integer(1)
+
+        current = self._store.get(key)
+        if current is None:
+            self._store.set(key, "1")
+            return Integer(1)
+
+        try:
+            value = int(current)
+        except ValueError:
+            raise CommandError("ERR value is not an integer or out of range")
+
+        new_value = value + 1
+        self._store.set(key, str(new_value))
+        return Integer(new_value)
+```
+
 ## asyncioバックグラウンドタスク
 
 ### タスクの作成と管理
@@ -367,19 +576,72 @@ async def _active_expiry_loop(self) -> None:
 
 ## 実装ガイド（ハンズオン）
 
-ここまで学んだ内容を活かして、有効期限管理（Passive + Active Expiry）を実装しましょう！（目安時間: 20分）
+ここまで学んだ内容を活かして、有効期限管理（Passive + Active Expiry）とEXPIRE/TTLコマンドを実装しましょう！（目安時間: 35分）
 
-### 実装する内容
+### パート0: ストレージ層への有効期限メソッド追加（5分）
+
+前のセクションでは基本的なストレージ操作（`get()`, `set()`, `delete()`）を実装しました。このセクションでは、有効期限管理のために必要なメソッドを追加します。
+
+#### 実装する内容
+
+1. `mini_redis/storage.py` を開く
+2. 有効期限管理メソッドを追加
+   - `set_expiry(key: str, expiry_at: int)`: キーの有効期限（Unixタイムスタンプ）を設定
+   - `get_expiry(key: str) -> int | None`: キーの有効期限を取得
+   - `get_keys_with_expiry() -> list[str]`: 有効期限が設定されたキー一覧を取得
+
+#### 実装のポイント
+
+```python
+def set_expiry(self, key: str, expiry_at: int) -> None:
+    """キーに有効期限を設定する"""
+    entry = self._data.get(key)
+    if entry:
+        entry.expiry_at = expiry_at
+
+def get_expiry(self, key: str) -> int | None:
+    """キーの有効期限を取得する"""
+    entry = self._data.get(key)
+    return entry.expiry_at if entry else None
+
+def get_keys_with_expiry(self) -> list[str]:
+    """有効期限が設定されたキー一覧を取得する"""
+    return [key for key, entry in self._data.items() if entry.expiry_at is not None]
+```
+
+### パート1: ExpiryManagerの実装（15分）
+
+#### 実装する内容
 
 1. `mini_redis/expiry.py` を開く
 2. `check_and_remove_expired()` を実装（Passive Expiry）
    - 有効期限をチェック
    - 期限切れの場合はキーを削除
-3. `start_active_expiry()` と `_active_expiry_loop()` を実装（Active Expiry）
+3. `set_expiry()` と `get_ttl()` を実装
+   - 有効期限を設定
+   - 残り有効期限（TTL）を取得
+4. `start_active_expiry()` と `_active_expiry_loop()` を実装（Active Expiry）
    - 1秒ごとにバックグラウンドタスクを実行
    - ランダムに20キーをサンプリング
    - 期限切れキーを削除
    - 削除率が25%を超える場合は即座に再実行
+
+### パート2: EXPIRE/TTLコマンドの実装（10分）
+
+#### 実装する内容
+
+1. `mini_redis/commands.py` を開く
+2. `Commands.__init__()` に `ExpiryManager` を追加
+3. EXPIRE/TTLコマンドのルーティングを追加
+4. `execute_expire()` と `execute_ttl()` を実装
+5. 既存の `execute_get()` と `execute_incr()` にPassive Expiryのチェックを追加
+
+### パート3: Commandsクラスの統合（5分）
+
+#### 実装する内容
+
+1. `mini_redis/commands.py` の `execute()` メソッドにEXPIRE/TTLのルーティングを追加
+2. GET/INCRコマンドにPassive Expiryチェックを追加
 
 ### 実装のポイント
 
@@ -456,14 +718,21 @@ async def _sample_and_remove_expired(self) -> None:
 ### テストで確認
 
 ```bash
+# ストレージ層の有効期限メソッドをテスト
+pytest tests/step04_expiry/test_storage.py -v
+
 # すべてのテストを実行
 pytest tests/step04_expiry/ -v
 
-# Passive Expiryのテスト
-pytest tests/step04_expiry/test_expiry.py::TestStep04PassiveExpiry -v
+# ExpiryManagerのテスト
+pytest tests/step04_expiry/test_expiry.py -v
 
-# Active Expiryのテスト
-pytest tests/step04_expiry/test_expiry.py::TestStep04ActiveExpiry -v
+# EXPIRE/TTLコマンドのテスト
+pytest tests/step04_expiry/test_commands.py::TestStep04ExpireCommand -v
+pytest tests/step04_expiry/test_commands.py::TestStep04TTLCommand -v
+
+# Passive Expiryが正しく動作するかテスト
+pytest tests/step04_expiry/test_commands.py::TestStep04PassiveExpiryIntegration -v
 ```
 
 ## 動作確認
@@ -508,17 +777,56 @@ OK
 (nil)  # Active Expiryで削除済み
 ```
 
+## よくある間違いと対処法
+
+### 1. Passive Expiryの呼び出し忘れ
+
+有効期限関連のコマンド（GET、INCR、EXPIRE、TTL）では、必ず最初にPassive Expiryチェックを行う必要があります。
+
+```python
+# ❌ 間違い
+async def execute_get(self, args: list[str]) -> BulkString:
+    key = args[0]
+    return BulkString(self._store.get(key))  # 期限チェックなし
+
+# ✅ 正しい
+async def execute_get(self, args: list[str]) -> BulkString:
+    key = args[0]
+    # Passive Expiry: 期限切れチェック
+    if self._expiry.check_and_remove_expired(key):
+        return BulkString(None)
+    return BulkString(self._store.get(key))
+```
+
+### 2. set_expiryとget_ttlの実装順序
+
+`set_expiry()`は秒数を受け取ってUnixタイムスタンプに変換しますが、`get_ttl()`はその逆の処理を行います。
+
+```python
+# set_expiry: 秒数 → Unixタイムスタンプ
+def set_expiry(self, key: str, seconds: int) -> None:
+    expiry_time = int(time.time()) + seconds
+    self._storage.set_expiry(key, expiry_time)
+
+# get_ttl: Unixタイムスタンプ → 残り秒数
+def get_ttl(self, key: str) -> int | None:
+    expiry_time = self._storage.get_expiry(key)
+    if expiry_time is None:
+        return None
+    return max(0, expiry_time - int(time.time()))
+```
+
 ## テストの実行
 
 ```bash
 # すべてのテストを実行
 pytest tests/step04_expiry/ -v
 
-# Passive Expiryのテスト
-pytest tests/step04_expiry/test_expiry.py::TestStep04PassiveExpiry -v
+# ExpiryManagerのテスト
+pytest tests/step04_expiry/test_expiry.py -v
 
-# Active Expiryのテスト
-pytest tests/step04_expiry/test_expiry.py::TestStep04ActiveExpiry -v
+# EXPIRE/TTLコマンドのテスト
+pytest tests/step04_expiry/test_commands.py -v
 ```
 
 ## 次のステップ
