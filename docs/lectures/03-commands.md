@@ -334,8 +334,6 @@ async def execute_incr(self, args: list[str]) -> Integer:
     return Integer(new_value)
 ```
 
-**注意**: 有効期限のチェック（Passive Expiry）は、次のセクション（[04-expiry.md](04-expiry.md)）で追加します。
-
 redis-cliでの実行例:
 
 ```bash
@@ -375,7 +373,9 @@ Redisのエラーメッセージは、以下の形式に従います：
 | 型エラー | `ERR value is not an integer or out of range` | 127.0.0.1:6380> EXPIRE key hoge <br/>(error) ERR value is not an integer or out of range |
 | 一般エラー | `ERR {message}` |  |
 
-### エラーハンドリングの実装例
+### クライアントハンドラとの統合とエラーハンドリングの実装例
+
+[01-tcp-server.md](01-tcp-server.md) では、server.pyにエコーサーバーを実装しました。クライアントハンドラにコマンド実行とエラーハンドリングを組み込むことで、サービスとして機能させます。
 
 ```python
 async def handle_client(reader: StreamReader, writer: StreamWriter) -> None:
@@ -450,6 +450,12 @@ pytest tests/step03_commands/test_storage.py -v
    - `execute_set()`: キーに値を設定
    - `execute_incr()`: 値を1増加
 
+#### テストで確認
+
+```bash
+pytest tests/step03_commands/test_commands.py -v
+```
+
 #### 実装のポイント
 
 **1. PINGコマンド**
@@ -489,21 +495,6 @@ async def execute_incr(self, args: list[str]) -> Integer:
     return Integer(new_value)
 ```
 
-#### よくある間違いと対処法
-
-**1. INCRコマンドの型エラー処理忘れ**
-
-```python
-# ❌ 間違い
-int_value = int(current_value)  # ValueErrorが発生する可能性
-
-# ✅ 正しい
-try:
-    int_value = int(current_value)
-except ValueError:
-    raise CommandError("ERR value is not an integer or out of range")
-```
-
 #### テストで確認
 
 ```bash
@@ -517,6 +508,15 @@ pytest tests/step03_commands/ -v
 pytest tests/step03_commands/test_commands.py::TestStep03PingCommand -v
 pytest tests/step03_commands/test_commands.py::TestStep03IncrCommand -v
 ```
+
+### パート3: クライアントハンドラの実装
+
+#### 実装する内容
+
+1. `mini_redis/server.py` を開く
+2. `handle_client()` メソッドを修正
+   - コマンドのパース、実行、応答送信の流れを実装
+   - `CommandError` をキャッチして適切なエラーメッセージを応答として送信
 
 ## 動作確認の手順
 
