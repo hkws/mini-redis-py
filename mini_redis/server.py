@@ -128,16 +128,6 @@ class TCPServer:
 
 class ClientHandler:
     """クライアント接続のハンドラ.
-
-    責務:
-    - 個別クライアントとの通信ループ
-    - リクエスト受信→レスポンス送信
-
-    実装のヒント:
-    1. handle()メソッドを実装する
-    2. 無限ループでコマンドを処理
-    3. 結果の型に応じてエンコード
-    4. エラーハンドリング
     """
 
     def __init__(self, parser: RESPParser, handler: CommandHandler) -> None:
@@ -146,10 +136,6 @@ class ClientHandler:
         Args:
             parser: RESPパーサのインスタンス
             handler: コマンドハンドラのインスタンス
-
-        【実装ステップ】
-        1. self._parser = parser
-        2. self._handler = handler
         """
         self._parser = parser
         self._handler = handler
@@ -160,5 +146,8 @@ class ClientHandler:
         Args:
             reader: asyncioのStreamReader
             writer: asyncioのStreamWriter
+        
+        01-tcp-server.mdの実装パートでは、このメソッドを
+        サーバーがエコーサーバーとして振る舞うように完成させてください。
         """
         pass

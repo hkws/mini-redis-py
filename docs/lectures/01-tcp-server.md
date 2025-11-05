@@ -226,8 +226,6 @@ except asyncio.LimitOverrunError:
 
 [StreamWriter](https://docs.python.org/ja/3/library/asyncio-stream.html#streamwriter)は、非同期にバイトデータを書き込むためのクラスです。
 
-主なメソッド：
-
 | メソッド | 説明 |
 |---------|------|
 | `write(data)` | 背後にあるソケットにデータを即座に書き込む。書き込みに失敗した場合、データは送信可能になるまで内部の書き込みバッファーに格納される |
@@ -287,8 +285,6 @@ async def handle_client(reader: StreamReader, writer: StreamWriter) -> None:
         await writer.wait_closed()
 ```
 
-finallyブロックで確実にクリーンナップすることで、ファイルディスクリプタの解放や、クライアントへの適切な切断通知を確実に行うことができます。
-
 ## エラーハンドリング
 
 ### 想定すべきエラー
@@ -342,34 +338,42 @@ async def handle_client(reader: StreamReader, writer: StreamWriter) -> None:
 
 ### asyncioのデバッグモード有効化
 
-```python
-asyncio.run(main(), debug=True)
-```
-
-デバッグモードでは：
-- 実行に時間がかかるタスクを警告
-- 適切にクリーンアップされなかったリソースを検出
-- 詳細なトレースバックを表示
-
-### ログ出力
+asnycioは、開発を容易にするためにデバッグモードが用意されています。デフォルトでは無効ですが、たとえば以下のようにすることで有効化できます。
 
 ```python
 import logging
+import asyncio
 
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.DEBUG)
 
-logger = logging.getLogger(__name__)
+async def debug_me():
+    await asyncio.sleep(1)
 
-async def handle_client(reader, writer):
-    logger.debug("Client connected")
-    try:
-        # 処理...
-        logger.info(f"Command received: {command}")
-    except Exception as e:
-        logger.error(f"Error: {e}", exc_info=True)
+asyncio.run(debug_me(), debug=True)
+```
+
+デバッグモードでは、I/Oの処理やタスクの実行時間が長すぎる場合、それがログに記録されます。
+たとえば、以下はあえて時間のかかる同期処理を入れた例です。
+
+```python
+import logging
+import asyncio
+import time
+
+logging.basicConfig(level=logging.DEBUG)
+
+async def debug_me():
+    time.sleep(1)
+
+asyncio.run(debug_me(), debug=True)
+```
+
+これを実行すると、以下のようなログが表示されます。
+
+```
+DEBUG:asyncio:Using selector: KqueueSelector
+WARNING:asyncio:Executing <Task finished name='Task-4' coro=<debug_me() done, defined at <stdin>:1> result=None created at /Users/h.kawase/.local/share/uv/python/cpython-3.12.11-macos-aarch64-none/lib/python3.12/asyncio/runners.py:100> took 1.006 seconds
+DEBUG:asyncio:Close <_UnixSelectorEventLoop running=False closed=False debug=True>
 ```
 
 ## 実装ガイド（ハンズオン）
@@ -378,7 +382,7 @@ async def handle_client(reader, writer):
 
 ### 実装のゴール
 
-このセクションでは、**受信したデータをそのまま返すエコーサーバー**を実装します。コマンドのパース、実行、応答のエンコードは次のセクション以降で実装するため、このステップではTODOコメントとして残しておきます。
+このセクションでは、受信したデータをそのまま返すエコーサーバーを実装します。コマンドのパース、実行、応答のエンコードは次のセクション以降で実装するため、このステップではTODOコメントとして残しておきます。
 
 ### 実装する内容
 
@@ -394,16 +398,15 @@ async def handle_client(reader, writer):
 
 ### ClientHandler.handle()実装ステップの詳細
 
-#### ステップ1: クライアント情報を取得してログ出力
+#### （任意）ステップ1: クライアント情報を取得してログ出力
 
 1. `writer.get_extra_info("peername")`でクライアントのアドレスを取得
 2. `logger.info(f"Client connected: {addr}")`でログ出力
 
-#### ステップ2: try-finally-whileループの構造を作成
+#### ステップ2: try-finally-while
 
-1. `try`ブロックを作成
-2. `finally`ブロックで`writer.close()`と`await writer.wait_closed()`を呼び出す
-3. `try`ブロック内に`while True:`無限ループを作成
+1. [エラーハンドリングのセクション](#エラーハンドリングの実装例)を参考に、`try`, `finally`, `while`ブロックを作成
+2. `finally`句内で`writer.close()`と`await writer.wait_closed()`を呼び出し、接続を適切にクリーンアップ
 
 #### ステップ3: データの読み取り
 
@@ -430,12 +433,12 @@ async def handle_client(reader, writer):
    - `logger.error(f"Unexpected error: {e}", exc_info=True)`でログ出力
    - `break`でループを抜ける
 
-#### ステップ6: TODO コメントを追加
+#### （任意）ステップ6: TODO コメントを追加
 
-将来の実装のために、以下のTODOコメントを追加してください：
+将来の実装のために、以下のTODOコメントを追加しておきましょう。
 
 ```python
-# TODO: 次のセクションで実装
+# TODO: 02以降のセクションで実装
 # 1. コマンドのパース (self._parser.parse_command())
 # 2. コマンドの実行 (self._handler.execute())
 # 3. 結果の型判定とエンコード (encode_simple_string/encode_integer/encode_bulk_string)
@@ -520,11 +523,9 @@ $ nc localhost 6379
 
 この段階では、まだRESPプロトコルのパーサやコマンド実行が未実装なので、受信したデータをそのまま返すだけです。次のセクションでプロトコルパーサを実装します。
 
-もし詰まった場合は、完成版コード（`solutions/mini_redis/server.py`）も参考にしてください。
-
 ## 次のステップ
 
-TCPサーバの基礎を学び、実装しました。次は、RESPプロトコルのパース・エンコードを実装します。
+asyncioの基礎を学び、エコーサーバーを実装しました。次は、RESPプロトコルのパース・エンコードを実装します。
 
 次のセクション: [02-protocol-parsing.md](02-protocol-parsing.md)
 
