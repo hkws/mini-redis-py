@@ -212,7 +212,7 @@ class TestStep03IncrCommand:
         store = DataStore()
         handler = CommandHandler(store, None)
 
-        result = await handler.execute_incr("counter")
+        result = await handler.execute_incr(["counter"])
         assert result == 1
         assert store.get("counter") == "1"
 
@@ -230,7 +230,7 @@ class TestStep03IncrCommand:
         handler = CommandHandler(store, None)
         store.set("counter", "5")
 
-        result = await handler.execute_incr("counter")
+        result = await handler.execute_incr(["counter"])
         assert result == 6
         assert store.get("counter") == "6"
 
@@ -247,4 +247,4 @@ class TestStep03IncrCommand:
         store.set("key1", "not_an_integer")
 
         with pytest.raises(CommandError, match="not an integer"):
-            await handler.execute_incr("key1")
+            await handler.execute_incr(["key1"])
