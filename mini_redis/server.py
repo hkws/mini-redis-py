@@ -144,9 +144,19 @@ class ClientHandler:
         try:
             while True:
                 try:
-                    # TODO: データを読み取る（\r\nまで）
-                    
-                    # TODO: データをそのままエコーバック
+                    #
+                    # 01-tcp-serverにて実装
+                    #
+                    ## TODO: データを読み取る（\r\nまで）
+                    ## TODO: データをそのままエコーバック
+
+
+                    #
+                    # 03-commandsにて実装
+                    #
+                    ## TODO: コマンドをパース
+                    ## TODO: コマンドを実行
+                    ## TODO: 結果をエンコードして送信
                     
                 except asyncio.IncompleteReadError:
                     # クライアントが切断

@@ -35,50 +35,25 @@ class CommandHandler:
         self._expiry = expiry
 
     async def execute(self, command: list[str]) -> SimpleString | BulkString | Integer | RedisError | Array:
-        """コマンドを実行.
+        """コマンドを実行する"""
+        if not command:
+            raise CommandError("ERR empty command")
 
-        Args:
-            command: コマンド名と引数のリスト
+        # コマンド名を大文字に正規化
+        cmd_name = command[0].upper()
+        args = command[1:]
 
-        Returns:
-            コマンドの実行結果
-
-        Raises:
-            CommandError: コマンド実行エラー
-        """
-        # 1. 空コマンドのチェック
-        #    commandが空の場合、CommandError("ERR empty command")
-
-        # 2  コマンド名と引数の取得
-        # 2.1 command[0]をコマンド名として取得
-        # 2.2 .upper()で大文字に変換（PINGもpingも同じ扱い）
-        # 2.3 command[1:]を引数リスト(args)として取得
-
-        # 3 コマンドのルーティング
-        # 1. コマンド名がPING:
-        #    - execute_ping(args)を呼び出す
-
-        # 2. コマンド名がGET:
-        #    - execute_get(args)を呼び出す
-
-        # 3. コマンド名がSET:
-        #    - execute_set(args)を呼び出す
-
-        # 4. コマンド名がINCR:
-        #    - execute_incr(args)を呼び出す
-
-        # 5. コマンド名がEXPIRE:
-        #    - 04-expiry.mdで実装
-        #    - execute_expire(args)を呼び出す
-
-        # 6. コマンド名がTTL:
-        #    - 04-expiry.mdで実装
-        #    - execute_ttl(args)を呼び出す
-
-        # 7. その他:
-        #    - CommandError(f"ERR unknown command '{cmd_name}'")をraise
-
-        raise NotImplementedError("execute()を実装してください")
+        # ルーティング
+        if cmd_name == "PING":
+            return await self.execute_ping(args)
+        elif cmd_name == "GET":
+            return await self.execute_get(args)
+        elif cmd_name == "SET":
+            return await self.execute_set(args)
+        elif cmd_name == "INCR":
+            return await self.execute_incr(args)
+        else:
+            raise CommandError(f"ERR unknown command '{cmd_name}'")
 
     async def execute_ping(self, args: list[str]) -> SimpleString | BulkString:
         """PING: "PONG"または入力された文字列を返す.
@@ -130,25 +105,32 @@ class CommandHandler:
         raise NotImplementedError("execute_set()を実装してください")
 
     async def execute_incr(self, args: list[str]) -> Integer:
-        """INCR: キーの値を1増加.
+        """INCRコマンドを実行"""
+        # 引数検証
+        if len(args) != 1:
+            raise CommandError("ERR wrong number of arguments for 'incr' command")
 
-        Args:
-            key: 増加させるキー
+        key = args[0]
 
-        Returns:
-            増加後の値
+        # 現在の値を取得
+        current = self._store.get(key)
 
-        Raises:
-            CommandError: 値が整数でない場合
+        if current is None:
+            # キーが存在しない: 0から開始
+            self._store.set(key, "1")
+            return Integer(1)
 
-        """
-        # 1. Passive expiryチェック
-        # 2. Storeから現在の値を取得
-        # 3. キーが存在しない場合は1を設定
-        # 4. 値を整数に変換
-        # 5. 値をインクリメントして保存
+        # 整数に変換を試みる
+        try:
+            value = int(current)
+        except ValueError:
+            raise CommandError("ERR value is not an integer or out of range")
 
-        raise NotImplementedError("execute_incr()を実装してください")
+        # インクリメント
+        new_value = value + 1
+        self._store.set(key, str(new_value))
+
+        return Integer(new_value)
 
     async def execute_expire(self, args: list[str]) -> Integer:
         """EXPIRE: キーに有効期限を設定.

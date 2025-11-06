@@ -435,9 +435,9 @@ async def handle(self, reader: StreamReader, writer: StreamWriter) -> None:
 
 1. `mini_redis/storage.py` を開く
 2. 基本操作を実装
-   - `get()`: キーの値を取得
-   - `set()`: キーに値を設定
-   - `delete()`: キーを削除
+   - 【未実装】`get()`: キーの値を取得
+   - 【未実装】`set()`: キーに値を設定
+   - 【未実装】`delete()`: キーを削除
 
 #### テストで確認
 
@@ -453,9 +453,9 @@ pytest tests/step03_commands/test_storage.py -v
 2. `execute()` メソッドを実装
    - コマンド名を取得し、対応するメソッドにルーティング
 3. 各コマンドを実装
-   - `execute_ping()`: "PONG"を返す
-   - `execute_get()`: キーの値を取得
-   - `execute_set()`: キーに値を設定
+   - 【未実装】`execute_ping()`: "PONG"を返す
+   - 【未実装】`execute_get()`: キーの値を取得
+   - 【未実装】`execute_set()`: キーに値を設定
    - `execute_incr()`: 値を1増加
 
 #### テストで確認
@@ -483,8 +483,10 @@ pytest tests/step03_commands/test_commands.py::TestStep03IncrCommand -v
 #### 実装する内容
 
 1. `mini_redis/server.py` を開く
-2. `handle()` メソッドを修正
-   - コマンドのパース、実行、応答送信の流れを実装
+2. 【未実装】`handle()` メソッドを修正
+   - コマンドをパース： `await self._protocol.parse_command(reader)`
+   - コマンドを実行： `await self._handler.execute(command)`
+   - 応答をエンコードして送信： `self._protocol.encode_response(result)`
    - `CommandError` をキャッチして適切なエラーメッセージを応答として送信
 
 ## 動作確認の手順
