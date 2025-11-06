@@ -13,16 +13,18 @@ Pythonで作る小さなRedis実装（学習用）
 - **基本コマンド**: PING/GET/SET/INCR/EXPIRE/TTLの動作原理
 - **有効期限管理**: Passive + Active Expirationの2段階管理
 
-## 学習資料
+## 学習資料とワークショップ構成
 
-各講義資料には、理論解説と実装ガイド（ハンズオン）の両方が含まれています。順番に読みながら実装を進めることで、自然とワークショップが完了します：
+各講義資料には、理論解説と実装ガイド（ハンズオン）の両方が含まれています。順番に読みながら実装を進めることで、ワークショップが完了します。
 
-- **[00-introduction.md](docs/lectures/00-introduction.md)** - Redis基礎とRESP入門、環境セットアップ
+- **[00-introduction.md](docs/lectures/00-introduction.md)** - Redis基礎とRESP入門、環境セットアップ（5分）
 - **[01-tcp-server.md](docs/lectures/01-tcp-server.md)** - asyncio TCPサーバの理論と実装（15分）
 - **[02-protocol-parsing.md](docs/lectures/02-protocol-parsing.md)** - RESPプロトコル詳細と実装（15分）
-- **[03-commands.md](docs/lectures/03-commands.md)** - コマンド実装パターンと実装（35分）
-- **[04-expiry.md](docs/lectures/04-expiry.md)** - 有効期限管理の理論と実装（20分）
-- **[05-summary.md](docs/lectures/05-summary.md)** - 統合テスト、まとめ、発展課題（10分）
+- **[03-commands.md](docs/lectures/03-commands.md)** - コマンド実装パターンと実装（25分）
+- **[04-expiry.md](docs/lectures/04-expiry.md)** - 有効期限管理の理論と実装（25分）
+- **[05-summary.md](docs/lectures/05-summary.md)** - 統合テスト、まとめ、発展課題（5分）
+
+ワークショップはパートごとに、講師による説明->受講者によるハンズオン->ハンズオンパートの解説の順での進行を基本としますが、必ずしもこの進め方に合わせる必要はありません。資料を見ながら自由に進めていただいても構いません。
 
 ### 📖 補足資料
 
@@ -104,20 +106,6 @@ pytest tests/test_protocol.py -v
 # サーバを起動
 python -m mini_redis
 ```
-
-## ワークショップの流れ
-
-本ワークショップは、講義資料を順番に読みながら実装を進める形式です（合計90分）。
-
-1. **[導入](docs/lectures/00-introduction.md)** (5分) - Redis基礎、RESP入門、環境セットアップ
-2. **[TCPサーバ](docs/lectures/01-tcp-server.md)** (15分) - asyncioによるネットワーク層
-3. **[RESPプロトコル](docs/lectures/02-protocol-parsing.md)** (15分) - パース・エンコード機能
-4. **[コマンド実装](docs/lectures/03-commands.md)** (25分) - ストレージ層とコマンド実行層
-5. **[有効期限管理](docs/lectures/04-expiry.md)** (25分) - Passive + Active Expiry
-6. **[統合テストとまとめ](docs/lectures/05-summary.md)** (5分) - 動作確認と発展課題
-
-ワークショップはパートごとに、講師による説明->受講者によるハンズオン->ハンズオンパートの解説の順での進行を基本としますが、必ずしもこの進め方に合わせる必要はありません。資料を見ながら自由に進めていただいても構いません。
-
 
 ## テストについて
 
