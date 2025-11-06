@@ -550,22 +550,22 @@ return RedisError("ERR unknown command")
 
 ## 実装ガイド（ハンズオン）
 
-ここまで学んだ内容を活かして、RESPプロトコルのパース・エンコードを実装しましょう！（目安時間: 15分）
+ここまで学んだ内容を活かして、RESPプロトコルのパース・エンコードを実装しましょう！
 
 ### 実装する内容
 
 1. `mini_redis/protocol.py` を開く
 2. `parse_command()` メソッドを実装
-   - `reader.readuntil(b'\r\n')` で1行ずつ読み取る
-   - Arrays形式 (`*N\r\n`) をパース
+   - 【未実装】`reader.readuntil(b'\r\n')` で1行ずつ読み取る
+   - 【未実装】Arrays形式 (`*N\r\n`) をパース
    - Bulk Strings形式 (`$length\r\ndata\r\n`) をパース
 3. エンコード関数を実装
    - 型ラッパーを定義
-   - `encode_simple_string()`: `+OK\r\n`
-   - `encode_integer()`: `:42\r\n`
-   - `encode_bulk_string()`: `$3\r\nfoo\r\n` または `$-1\r\n`
-   - `encode_error()`: `-ERR message\r\n`
-   - `encode_array()`: `*N\r\n{要素1}{要素2}...`
+   - 【未実装】`encode_simple_string()`: `+OK\r\n`
+   - 【未実装】`encode_integer()`: `:42\r\n`
+   - 【未実装】`encode_bulk_string()`: `$3\r\nfoo\r\n` または `$-1\r\n`
+   - 【未実装】`encode_error()`: `-ERR message\r\n`
+   - 【未実装】`encode_array()`: `*N\r\n{要素1}{要素2}...`
    - `encode_response()`: 型ラッパーに基づいて適切なエンコード関数を呼び出す
 
 ### 実装のポイント

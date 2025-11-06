@@ -68,14 +68,39 @@ class RedisSerializationProtocol:
 
         # TODO: Bulk Stringのパースを実装してください
         # 2-1. 空のリストを作成: result = []
-        # 2-2. 配列の要素数分ループ
-        #   2-2-1. Bulk Stringの長さ行（$N\r\n）を読み取る
-        #   2-2-2. 一文字目を見てBulk Stringかチェック
-        #   2-2-3. 指定された長さ分のデータを読み取る（\r\nに注意）: reader.readexactly(length + 2)
-        #   2-2-4. 終端が\r\nであることを検証
-        #   2-2-5. データをUTF-8でデコード
+        # 2-2. 配列の要素数分ループ: self._parse_bulk_string(reader)を呼び出して要素を取得し、resultに追加
         # 2-3. resultを返す
         raise NotImplementedError("parse_command()を実装してください")
+
+    async def _parse_bulk_string(self, reader: StreamReader) -> str:
+        """Bulk Stringをパースする"""
+        # 長さ行を読む: $N\r\n
+        length_line = await reader.readuntil(b'\r\n')
+        length_line = length_line[:-2]  # CRLF削除
+
+        # Bulk Stringかチェック
+        if not length_line.startswith(b'$'):
+            raise RESPProtocolError("Expected bulk string")
+
+        # 長さを取得
+        try:
+            length = int(length_line[1:])
+        except ValueError:
+            raise RESPProtocolError("Invalid bulk string length")
+
+        # Null値のチェック
+        if length == -1:
+            raise RESPProtocolError("Unexpected null value")
+
+        # データを読む（データ + \r\n）
+        data = await reader.readexactly(length + 2)
+        
+        # 末尾が\r\nかチェック
+        if data[-2:] != b'\r\n':
+            raise RESPProtocolError("Expected CRLF after bulk string")
+
+        # CRLF削除してUTF-8デコード
+        return data[:-2].decode('utf-8')
 
     def encode_simple_string(self, value: str) -> bytes:
         """Simple Stringをエンコード.
@@ -152,7 +177,7 @@ class RedisSerializationProtocol:
         """
         raise NotImplementedError("encode_array()を実装してください")
 
-    def encode_response(self, response) -> bytes:
+    def encode_response(self, result) -> bytes:
         """レスポンスをRESP形式にエンコード.
 
         Args:
@@ -169,7 +194,18 @@ class RedisSerializationProtocol:
             None → b'$-1\\r\\n'
 
         """
-        raise NotImplementedError("encode_response()を実装してください")
+        if isinstance(result, SimpleString):
+            return self.encode_simple_string(result.value)
+        elif isinstance(result, RedisError):
+            return self.encode_error(result.value)
+        elif isinstance(result, Integer):
+            return self.encode_integer(result.value)
+        elif isinstance(result, BulkString):
+            return self.encode_bulk_string(result.value)
+        elif isinstance(result, Array):
+            return self.encode_array(result.items)
+        else:
+            raise ValueError(f"Unsupported type: {type(result)}")
 
 
 class RESPProtocolError(Exception):
