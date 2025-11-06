@@ -452,7 +452,6 @@ pytest tests/step03_commands/test_storage.py -v
 1. `mini_redis/commands.py` を開く
 2. `execute()` メソッドを実装
    - コマンド名を取得し、対応するメソッドにルーティング
-   - 引数の数と型を検証
 3. 各コマンドを実装
    - `execute_ping()`: "PONG"を返す
    - `execute_get()`: キーの値を取得
