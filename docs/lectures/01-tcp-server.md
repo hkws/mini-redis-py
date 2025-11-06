@@ -441,7 +441,7 @@ DEBUG:asyncio:Close <_UnixSelectorEventLoop running=False closed=False debug=Tru
 # TODO: 02以降のセクションで実装
 # 1. コマンドのパース (self._parser.parse_command())
 # 2. コマンドの実行 (self._handler.execute())
-# 3. 結果の型判定とエンコード (encode_simple_string/encode_integer/encode_bulk_string)
+# 3. 結果のエンコード (encode_response)
 ```
 
 ### 実装例
@@ -464,7 +464,7 @@ async def handle(self, reader: StreamReader, writer: StreamWriter) -> None:
                 # TODO: 次のセクションで実装
                 # 1. コマンドのパース (self._parser.parse_command())
                 # 2. コマンドの実行 (self._handler.execute())
-                # 3. 結果の型判定とエンコード (encode_simple_string/encode_integer/encode_bulk_string)
+                # 3. 結果のエンコード (encode_response)
 
                 # データをそのままエコーバック
                 writer.write(data)
