@@ -163,6 +163,10 @@ sequenceDiagram
 実際に手元でRedis/Redis CLIを動かしてメッセージを見てみましょう。
 実際の`redis-server`と`redis-cli`の通信をそのまま覗きたい場合は、`socat`でプロキシを挟むとRESPメッセージを生の形で確認できます。`redis` が未インストールなら `brew install redis`、`socat`が未インストールなら`brew install socat`などで導入してください。
 
+!!! note redis/redis-cli の準備
+    - macOS: `brew install redis`（`redis-cli` がインストールされます）
+    - Windows (Chocolatey): `choco install redis-64`
+
 ```bash
 # ターミナル1: redis-serverを起動（）
 redis-server --port 6379
@@ -237,10 +241,6 @@ python -m solutions.mini_redis
 ```
 
 別のターミナルで`redis-cli`を使って接続します。
-
-!!! note "redis-cli の準備"
-    - macOS: `brew install redis`（`redis-cli` がインストールされます）
-    - Windows (Chocolatey): `choco install redis-64`
 
 完成版サーバは、接続先ポートが `16379` であることに注意してください。これは、みなさんが実装するサーバとポート番号を重複させないためです。
 
