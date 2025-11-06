@@ -427,9 +427,9 @@ async def handle(self, reader: StreamReader, writer: StreamWriter) -> None:
 
 ## 実装ガイド（ハンズオン）
 
-ここまで学んだ内容を活かして、ストレージ層とコマンド実行層を実装しましょう！（目安時間: 35分）
+ここまで学んだ内容を活かして、ストレージ層とコマンド実行層を実装しましょう！
 
-### パート1: データストレージ層の実装（15分）
+### パート1: データストレージ層の実装
 
 #### 実装する内容
 
@@ -438,7 +438,6 @@ async def handle(self, reader: StreamReader, writer: StreamWriter) -> None:
    - `get()`: キーの値を取得
    - `set()`: キーに値を設定
    - `delete()`: キーを削除
-   - `exists()`: キーの存在確認
 
 #### テストで確認
 
@@ -446,7 +445,7 @@ async def handle(self, reader: StreamReader, writer: StreamWriter) -> None:
 pytest tests/step03_commands/test_storage.py -v
 ```
 
-### パート2: コマンド実行層の実装（20分）
+### パート2: コマンド実行層の実装
 
 #### 実装する内容
 
@@ -464,45 +463,6 @@ pytest tests/step03_commands/test_storage.py -v
 
 ```bash
 pytest tests/step03_commands/test_commands.py -v
-```
-
-#### 実装のポイント
-
-**1. PINGコマンド**
-
-```python
-async def execute_ping(self, args: list[str]) -> SimpleString | BulkString:
-    if len(args) == 0:
-        return SimpleString("PONG")
-    elif len(args) == 1:
-        return BulkString(args[0])
-    else:
-        raise CommandError("ERR wrong number of arguments for 'ping' command")
-```
-
-**2. INCRコマンド（型エラー処理に注意）**
-
-```python
-async def execute_incr(self, args: list[str]) -> Integer:
-    if len(args) != 1:
-        raise CommandError("ERR wrong number of arguments for 'incr' command")
-
-    key = args[0]
-    current = self._store.get(key)
-
-    if current is None:
-        self._store.set(key, "1")
-        return Integer(1)
-
-    # 整数変換を試みる
-    try:
-        value = int(current)
-    except ValueError:
-        raise CommandError("ERR value is not an integer or out of range")
-
-    new_value = value + 1
-    self._store.set(key, str(new_value))
-    return Integer(new_value)
 ```
 
 #### テストで確認
