@@ -84,75 +84,11 @@ code --diff mini_redis/protocol.py solutions/mini_redis/protocol.py
 
 詰まった場合は、以下の順序で参照することを推奨：
 
-1. **ワークショップガイド**: `WORKSHOP_GUIDE.md` の「よくある間違い」セクション
-2. **テストコード**: `tests/` ディレクトリのテストで期待される動作を確認
-3. **完成版コード**: このディレクトリの該当ファイルを参照
+1. **テストコード**: `tests/` ディレクトリのテストで期待される動作を確認
+2. **完成版コード**: このディレクトリの該当ファイルを参照
 
 ## 注意事項
 
 - 完成版コードをそのままコピーするのではなく、まずは自分で実装することを推奨します
 - 詰まった箇所の参考として、該当するメソッドだけを参照することをお勧めします
 - 完成版コードにも学習用のコメントが含まれているため、理解を深めるのに役立ちます
-- **重要**: `solutions/mini_redis`は相対インポートを使用しているため、学習用の`mini_redis`とは完全に独立して動作します。ファイルの移動やコピーは不要です
-
-## 実装のポイント
-
-### RESPプロトコル (protocol.py)
-
-```python
-# Bulk Stringの長さはバイト数で指定
-value_bytes = value.encode('utf-8')
-length = len(value_bytes)  # 文字数ではなくバイト数
-```
-
-### Passive Expiry (commands.py)
-
-```python
-# GET/INCR/EXPIRE/TTLの最初で必ず呼び出す
-async def execute_get(self, key: str) -> str | None:
-    self._expiry.check_and_remove_expired(key)  # Passive expiry
-    return self._store.get(key)
-```
-
-### Active Expiry (expiry.py)
-
-```python
-# 削除率が25%を超えたら即座に次のサンプリング
-while True:
-    # サンプリングと削除
-    deletion_rate = (deleted_count / sample_size) * 100
-    if deletion_rate <= 25:
-        break  # 削除率が低いので終了
-```
-
-## テストの実行
-
-完成版コードが正しく動作することを確認：
-
-```bash
-# すべてのテストを実行
-pytest
-
-# 特定のモジュールのテストだけ実行
-pytest tests/test_protocol.py -v
-pytest tests/test_storage.py -v
-pytest tests/test_commands.py -v
-pytest tests/test_expiry.py -v
-
-# 型チェック
-mypy solutions/mini_redis
-
-# リンター・フォーマッター
-ruff check solutions/mini_redis
-```
-
-## さらなる学習
-
-完成版を理解したら、以下の発展課題に挑戦してみましょう：
-
-1. **DEL / EXISTS コマンドの実装**
-2. **EXPIRETIME コマンドの実装**（Redis 7.0+）
-3. **メトリクス収集機能の追加**
-4. **Pub/Sub機能の実装**（設計書を参照）
-
-詳細は`WORKSHOP_GUIDE.md`の「発展課題」セクションを参照してください。

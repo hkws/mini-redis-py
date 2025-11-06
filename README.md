@@ -111,16 +111,17 @@ python -m mini_redis
 
 ## ワークショップの流れ
 
-本ワークショップは、講義資料を順番に読みながら実装を進める形式です（合計90分）：
+本ワークショップは、講義資料を順番に読みながら実装を進める形式です（合計90分）。
 
 1. **[導入](docs/lectures/00-introduction.md)** (5分) - Redis基礎、RESP入門、環境セットアップ
 2. **[TCPサーバ](docs/lectures/01-tcp-server.md)** (15分) - asyncioによるネットワーク層
 3. **[RESPプロトコル](docs/lectures/02-protocol-parsing.md)** (15分) - パース・エンコード機能
 4. **[コマンド実装](docs/lectures/03-commands.md)** (25分) - ストレージ層とコマンド実行層
-5. **[有効期限管理](docs/lectures/04-expiry.md)** (20分) - Passive + Active Expiry
-6. **[統合テストとまとめ](docs/lectures/05-summary.md)** (10分) - 動作確認と発展課題
+5. **[有効期限管理](docs/lectures/04-expiry.md)** (25分) - Passive + Active Expiry
+6. **[統合テストとまとめ](docs/lectures/05-summary.md)** (5分) - 動作確認と発展課題
 
-各講義資料には「実装ガイド（ハンズオン）」セクションがあり、理論を学んだ後すぐに実装できるようになっています。
+ワークショップはパートごとに、講師による説明->受講者によるハンズオン->ハンズオンパートの解説の順での進行を基本としますが、必ずしもこの進め方に合わせる必要はありません。資料を見ながら自由に進めていただいても構いません。
+
 
 ## テストについて
 
@@ -140,23 +141,7 @@ pytest tests/step03_commands/ -v
 
 # Step 04: 有効期限管理
 pytest tests/step04_expiry/ -v
-
-# すべてのステップテストを実行
-pytest tests/step*/ -v
 ```
-
-### 統合テスト
-
-```bash
-# すべてのテストを実行（ルートのテストファイル含む）
-pytest tests/ -v
-
-# 特定の実装ファイルのテスト
-pytest tests/test_protocol.py -v
-pytest tests/test_commands.py -v
-```
-
-各ステップのテストファイルには、対応する講義資料へのリンクと詳細な検証内容が記載されています。
 
 ## 開発ツール
 
