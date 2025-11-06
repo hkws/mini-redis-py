@@ -114,7 +114,7 @@ class RedisSerializationProtocol:
         例: "PONG" → b'+PONG\\r\\n'
 
         """
-        raise NotImplementedError("encode_simple_string()を実装してください")
+        return f"+{value}\r\n".encode('utf-8')
 
     def encode_error(self, message: str) -> bytes:
         """Errorをエンコード.
@@ -128,7 +128,7 @@ class RedisSerializationProtocol:
         例: "ERR unknown command" → b'-ERR unknown command\\r\\n'
 
         """
-        raise NotImplementedError("encode_error()を実装してください")
+        return f"-{message}\r\n".encode('utf-8')
 
     def encode_integer(self, value: int) -> bytes:
         """Integerをエンコード.
@@ -142,7 +142,7 @@ class RedisSerializationProtocol:
         例: 42 → b':42\\r\\n'
         
         """
-        raise NotImplementedError("encode_integer()を実装してください")
+        return f":{value}\r\n".encode('utf-8')
 
     def encode_bulk_string(self, value: str | None) -> bytes:
         """Bulk Stringをエンコード.
@@ -156,13 +156,13 @@ class RedisSerializationProtocol:
         """
         # 1. value が None の場合、b"$-1\r\n" を返す
 
-        # 2-1. value.encode()でUTF-8バイト列に変換
-        # 2-2. len(value_bytes)でバイト数を取得
-        # 2-3. $<length>\r\n<data>\r\n を返す
+        # 2. value.encode()でUTF-8バイト列に変換
+        # 3. len(value_bytes)でバイト数を取得
+        # 4. $<length>\r\n<data>\r\n を返す
 
         raise NotImplementedError("encode_bulk_string()を実装してください")
 
-    def encode_array(self, values) -> bytes:
+    def encode_array(self, values: list[str] | None) -> bytes:
         """Arrayをエンコード.
 
         Args:
@@ -175,6 +175,9 @@ class RedisSerializationProtocol:
         例: None → b'*-1\\r\\n'
 
         """
+        # 1. values が None の場合、b"*-1\r\n" を返す
+        # 2. 要素数行を作成: b'*<num_elements>\r\n'
+        # 3. 各要素について encode_response() を呼び出してエンコードし、結果を連結
         raise NotImplementedError("encode_array()を実装してください")
 
     def encode_response(self, result) -> bytes:

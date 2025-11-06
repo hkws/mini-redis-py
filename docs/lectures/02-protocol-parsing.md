@@ -561,10 +561,10 @@ return RedisError("ERR unknown command")
    - Bulk Strings形式 (`$length\r\ndata\r\n`) をパース
 3. エンコード関数を実装
    - 型ラッパーを定義
-   - 【未実装】`encode_simple_string()`: `+OK\r\n`
-   - 【未実装】`encode_integer()`: `:42\r\n`
+   - `encode_simple_string()`: `+OK\r\n`
+   - `encode_integer()`: `:42\r\n`
+   - `encode_error()`: `-ERR message\r\n`
    - 【未実装】`encode_bulk_string()`: `$3\r\nfoo\r\n` または `$-1\r\n`
-   - 【未実装】`encode_error()`: `-ERR message\r\n`
    - 【未実装】`encode_array()`: `*N\r\n{要素1}{要素2}...`
    - `encode_response()`: 型ラッパーに基づいて適切なエンコード関数を呼び出す
 
