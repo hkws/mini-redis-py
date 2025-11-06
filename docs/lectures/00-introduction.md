@@ -166,6 +166,7 @@ sequenceDiagram
 !!! note redis/redis-cli の準備
     - macOS: `brew install redis`（`redis-cli` がインストールされます）
     - Windows (Chocolatey): `choco install redis-64`
+    - Ubuntu: `sudo apt install -y redis-server redis-tools`
 
 ```bash
 # ターミナル1: redis-serverを起動（）
