@@ -72,6 +72,7 @@ cd mini-redis-py
 pipx install uv
 
 # プロジェクト用の Python 3.12.11 を取得し、依存関係を同期 (.venv が自動生成されます)
+uv self update
 uv python install "$(cat .python-version)"
 uv sync --extra dev
 
