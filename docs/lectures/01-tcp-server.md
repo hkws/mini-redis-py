@@ -410,9 +410,8 @@ DEBUG:asyncio:Close <_UnixSelectorEventLoop running=False closed=False debug=Tru
 
 #### ステップ3: データの読み取り
 
-1. 内側の`try`ブロック内で`await reader.readuntil(b'\r\n')`を呼び出す
-2. 結果を`data`変数に格納
-3. `logger.debug(f"Received: {data}")`でログ出力
+1. 内側の`try`ブロック内で`data = await reader.readuntil(b'\r\n')`を呼び出す
+2. `logger.debug(f"Received: {data}")`でログ出力
 
 #### ステップ4: データをそのままエコーバック
 
