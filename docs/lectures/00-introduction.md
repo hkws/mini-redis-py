@@ -297,7 +297,7 @@ OK
 
 1. **TCPサーバの構築** ([01-tcp-server.md](01-tcp-server.md)): asyncioを使った非同期TCPサーバ
 2. **プロトコルのパース** ([02-protocol-parsing.md](02-protocol-parsing.md)): RESPメッセージの解析とエンコード
-3. **コマンドの実装** ([03-commands.md](03-commands.md)): PING, GET, SET, INCR, EXPIRE, TTL
+3. **コマンドの実装** ([03-commands.md](03-commands.md)): PING, GET, SET, INCR
 4. **有効期限管理** ([04-expiry.md](04-expiry.md)): Passive/Active Expiryの実装
 
 実装を始める前に、[アーキテクチャドキュメント](../architecture.md)で全体像を確認することをおすすめします。
