@@ -70,8 +70,6 @@ class TCPServer:
         Active Expiryバックグラウンドタスクを起動し、TCPサーバを開始する。
         このメソッドはserve_forever()内で無限ループするため、
         KeyboardInterruptや例外が発生するまで戻らない。
-
-        注意: このメソッドは実装済みです。変更する必要はありません。
         """
         # 依存性の初期化（未指定の場合は新規作成）
         from mini_redis.expiry import ExpiryManager
@@ -91,9 +89,7 @@ class TCPServer:
             client_handler = ClientHandler(protocol, handler)
 
         # 1. asyncio.start_server()でサーバを起動
-        self._server = await asyncio.start_server(
-            client_handler.handle, self.host, self.port
-        )
+        # TODO: サーバを起動し、接続ハンドラとして client_handler.handle を指定
 
         addr = self._server.sockets[0].getsockname() if self._server.sockets else (self.host, self.port)
         logger.info(f"Mini-Redis server started on {addr[0]}:{addr[1]}")
@@ -141,13 +137,39 @@ class ClientHandler:
         self._handler = handler
 
     async def handle(self, reader: StreamReader, writer: StreamWriter) -> None:
-        """クライアント接続を処理するメインループ.
+        """クライアント接続を処理する（エコーサーバー）"""
+        addr = writer.get_extra_info("peername")
+        logger.info(f"Client connected: {addr}")
 
-        Args:
-            reader: asyncioのStreamReader
-            writer: asyncioのStreamWriter
-        
-        01-tcp-server.mdの実装パートでは、このメソッドを
-        サーバーがエコーサーバーとして振る舞うように完成させてください。
-        """
-        pass
+        try:
+            while True:
+                try:
+                    # TODO: データを読み取る（\r\nまで）
+                    
+                    # TODO: データをそのままエコーバック
+                    
+                except asyncio.IncompleteReadError:
+                    # クライアントが切断
+                    logger.info("Client disconnected")
+                    break
+
+                except ConnectionResetError:
+                    # 接続がリセットされた
+                    logger.info(f"Connection reset: {addr}")
+                    break
+
+                except asyncio.CancelledError:
+                    # サーバシャットダウン
+                    logger.info("Server shutting down")
+                    raise
+
+                except Exception as e:
+                    # 予期しないエラー
+                    logger.error(f"Unexpected error: {e}", exc_info=True)
+                    break
+
+        finally:
+            # 必ずクリーンアップ
+            writer.close()
+            await writer.wait_closed()
+            logger.info(f"Connection closed: {addr}")

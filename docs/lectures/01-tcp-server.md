@@ -387,63 +387,18 @@ DEBUG:asyncio:Close <_UnixSelectorEventLoop running=False closed=False debug=Tru
 ### 実装する内容
 
 1. `mini_redis/__main__.py`と`mini_redis/server.py`を開き、実装済みの内容を確認
-2. `ClientHandler.handle()` メソッドを実装
+2. `ClientHandler.handle()` メソッドの未実装箇所を実装
    - クライアント情報の取得とログ出力
-   - データの読み取り（`readuntil(b'\r\n')`でRESP形式の行を読む）
-   - **受信したデータをそのままエコーバック**
+   - 【未実装】データの読み取り（`readuntil(b'\r\n')`でRESP形式の行を読む）
+   - 【未実装】受信したデータをそのままエコーバック（`writer.write(data)`, `await writer.drain()`で送信）
    - エラーハンドリング（`IncompleteReadError`、`CancelledError`等）
    - `finally`句でクリーンアップ
+3. `TCPServer.start()` メソッドの未実装箇所を実装
+   - `asyncio.start_server()`でサーバを起動し、接続ハンドラとして `client_handler.handle` を指定
 
-なお、`TCPServer.start()`と`stop()`は実装済みです。
+なお、`TCPServer.stop()`や、`TCPServer.start()`, `ClientHandler.handle()`の一部は実装済みです。
 
-### ClientHandler.handle()実装ステップの詳細
-
-#### （任意）ステップ1: クライアント情報を取得してログ出力
-
-1. `writer.get_extra_info("peername")`でクライアントのアドレスを取得
-2. `logger.info(f"Client connected: {addr}")`でログ出力
-
-#### ステップ2: try-finally-while
-
-1. [エラーハンドリングのセクション](#エラーハンドリングの実装例)を参考に、`try`, `finally`, `while`ブロックを作成
-2. `finally`句内で`writer.close()`と`await writer.wait_closed()`を呼び出し、接続を適切にクリーンアップ
-
-#### ステップ3: データの読み取り
-
-1. 内側の`try`ブロック内で`data = await reader.readuntil(b'\r\n')`を呼び出す
-2. `logger.debug(f"Received: {data}")`でログ出力
-
-#### ステップ4: データをそのままエコーバック
-
-1. `writer.write(data)`でデータをそのまま送信
-2. `await writer.drain()`で送信完了を待つ
-
-#### ステップ5: エラーハンドリング
-
-1. **asyncio.IncompleteReadError例外をキャッチ**:
-   - `logger.info("Client disconnected")`でログ出力
-   - `break`でループを抜ける
-
-2. **asyncio.CancelledError例外をキャッチ**:
-   - `logger.info("Server shutting down")`でログ出力
-   - `raise`で例外を再送出（main関数内でcatchし、TCPServer.stop()を実行する）
-
-3. **Exception例外をキャッチ（予期しないエラー）**:
-   - `logger.error(f"Unexpected error: {e}", exc_info=True)`でログ出力
-   - `break`でループを抜ける
-
-#### （任意）ステップ6: TODO コメントを追加
-
-将来の実装のために、以下のTODOコメントを追加しておきましょう。
-
-```python
-# TODO: 02以降のセクションで実装
-# 1. コマンドのパース (self._protocol.parse_command())
-# 2. コマンドの実行 (self._handler.execute())
-# 3. 結果のエンコード (encode_response)
-```
-
-### 実装例
+### 参考：ClientHandler.handle()の実装例
 
 例えば、以下のような実装があり得るでしょう。
 
@@ -459,11 +414,6 @@ async def handle(self, reader: StreamReader, writer: StreamWriter) -> None:
                 # データを読み取る（\r\nまで）
                 data = await reader.readuntil(b'\r\n')
                 logger.debug(f"Received: {data}")
-
-                # TODO: 次のセクションで実装
-                # 1. コマンドのパース (self._protocol.parse_command())
-                # 2. コマンドの実行 (self._handler.execute())
-                # 3. 結果のエンコード (encode_response)
 
                 # データをそのままエコーバック
                 writer.write(data)
