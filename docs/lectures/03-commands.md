@@ -387,17 +387,17 @@ async def handle(self, reader: StreamReader, writer: StreamWriter) -> None:
         while True:
             try:                
                 # コマンドをパース
-                command = await self._parser.parse_command(reader)
+                command = await self._protocol.parse_command(reader)
 
                 # コマンドを実行（型ラッパーが返ってくる）
                 result = await self._handler.execute(command)
 
                 # 応答をエンコード（型ラッパーに基づいて適切な形式に変換）
-                response = self._parser.encode_response(result)
+                response = self._protocol.encode_response(result)
 
             except CommandError as e:
                 # コマンド実行エラー（RedisErrorでラップしてエンコード）
-                response = self._parser.encode_response(RedisError(str(e)))
+                response = self._protocol.encode_response(RedisError(str(e)))
 
             except asyncio.IncompleteReadError:
                 # クライアントが接続を切断した
@@ -412,7 +412,7 @@ async def handle(self, reader: StreamReader, writer: StreamWriter) -> None:
             except Exception as e:
                 # 予期しないエラー
                 logger.exception("Unexpected error")
-                response = self._parser.encode_response(RedisError("ERR internal server error"))
+                response = self._protocol.encode_response(RedisError("ERR internal server error"))
 
             # 応答を送信
             writer.write(response)
@@ -483,7 +483,7 @@ pytest tests/step03_commands/test_commands.py::TestStep03IncrCommand -v
 #### 実装する内容
 
 1. `mini_redis/server.py` を開く
-2. `handle_client()` メソッドを修正
+2. `handle()` メソッドを修正
    - コマンドのパース、実行、応答送信の流れを実装
    - `CommandError` をキャッチして適切なエラーメッセージを応答として送信
 

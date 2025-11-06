@@ -35,7 +35,7 @@ class Array:
     """Array型を表すラッパー (*)"""
     items: list | None  # Noneの場合はNull Array
 
-class RESPParser:
+class RedisSerializationProtocol:
     """RESPプロトコルのパーサ・エンコーダ.
 
     責務:

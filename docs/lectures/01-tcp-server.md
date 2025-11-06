@@ -438,7 +438,7 @@ DEBUG:asyncio:Close <_UnixSelectorEventLoop running=False closed=False debug=Tru
 
 ```python
 # TODO: 02以降のセクションで実装
-# 1. コマンドのパース (self._parser.parse_command())
+# 1. コマンドのパース (self._protocol.parse_command())
 # 2. コマンドの実行 (self._handler.execute())
 # 3. 結果のエンコード (encode_response)
 ```
@@ -461,7 +461,7 @@ async def handle(self, reader: StreamReader, writer: StreamWriter) -> None:
                 logger.debug(f"Received: {data}")
 
                 # TODO: 次のセクションで実装
-                # 1. コマンドのパース (self._parser.parse_command())
+                # 1. コマンドのパース (self._protocol.parse_command())
                 # 2. コマンドの実行 (self._handler.execute())
                 # 3. 結果のエンコード (encode_response)
 

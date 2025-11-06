@@ -19,7 +19,7 @@ import pytest
 # 他のコンポーネントは完成版を使用
 from solutions.mini_redis.commands import CommandHandler
 from solutions.mini_redis.expiry import ExpiryManager
-from solutions.mini_redis.protocol import RESPParser
+from solutions.mini_redis.protocol import RedisSerializationProtocol
 from solutions.mini_redis.storage import DataStore
 
 # テスト対象のみmini_redisからimport
@@ -73,7 +73,7 @@ def create_mock_streams() -> tuple[asyncio.StreamReader, asyncio.StreamWriter, M
     transport = MockTransport()
     protocol = asyncio.StreamReaderProtocol(reader)
     transport.set_protocol(protocol)
-    writer = asyncio.StreamWriter(transport, protocol, reader, asyncio.get_event_loop())
+    writer = asyncio.StreamWriter(transport, protocol, reader, asyncio.get_event_loop()) # type: ignore
     return reader, writer, transport
 
 
@@ -93,11 +93,11 @@ class TestStep01EchoServer:
         reader, writer, transport = create_mock_streams()
 
         # 依存関係を準備（完成版を使用）
-        parser = RESPParser()
+        protocol = RedisSerializationProtocol()
         store = DataStore()
         expiry = ExpiryManager(store)
         handler = CommandHandler(store, expiry)
-        client_handler = ClientHandler(parser, handler)
+        client_handler = ClientHandler(protocol, handler) # type: ignore
 
         # 1行のデータを送信（RESP Array形式のPINGコマンド）
         data = b"*1\r\n$4\r\nPING\r\n"
@@ -121,11 +121,11 @@ class TestStep01EchoServer:
         """
         reader, writer, transport = create_mock_streams()
 
-        parser = RESPParser()
+        protocol = RedisSerializationProtocol()
         store = DataStore()
         expiry = ExpiryManager(store)
         handler = CommandHandler(store, expiry)
-        client_handler = ClientHandler(parser, handler)
+        client_handler = ClientHandler(protocol, handler)  # type: ignore
 
         # 複数行のデータを送信
         line1 = b"*1\r\n$4\r\nPING\r\n"
@@ -156,11 +156,11 @@ class TestStep01EchoServer:
         """
         reader, writer, transport = create_mock_streams()
 
-        parser = RESPParser()
+        protocol = RedisSerializationProtocol()
         store = DataStore()
         expiry = ExpiryManager(store)
         handler = CommandHandler(store, expiry)
-        client_handler = ClientHandler(parser, handler)
+        client_handler = ClientHandler(protocol, handler) # type: ignore
 
         # コマンドを送信せずにEOFを送る（即座に切断）
         reader.feed_eof()
@@ -182,11 +182,11 @@ class TestStep01EchoServer:
         """
         reader, writer, transport = create_mock_streams()
 
-        parser = RESPParser()
+        protocol = RedisSerializationProtocol()
         store = DataStore()
         expiry = ExpiryManager(store)
         handler = CommandHandler(store, expiry)
-        client_handler = ClientHandler(parser, handler)
+        client_handler = ClientHandler(protocol, handler) # type: ignore
 
         # 不完全な行（\r\nで終わっていない）
         partial_data = b"*3\r\n$3\r\nSET\r\n"
@@ -220,11 +220,11 @@ class TestStep01EchoServer:
         for data, description in test_cases:
             reader, writer, transport = create_mock_streams()
 
-            parser = RESPParser()
+            protocol = RedisSerializationProtocol()
             store = DataStore()
             expiry = ExpiryManager(store)
             handler = CommandHandler(store, expiry)
-            client_handler = ClientHandler(parser, handler)
+            client_handler = ClientHandler(protocol, handler) # type: ignore
 
             reader.feed_data(data)
             reader.feed_eof()

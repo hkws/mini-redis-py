@@ -300,7 +300,7 @@ class RESPProtocolError(Exception):
     """RESPプロトコルエラー"""
     pass
 
-class RESPParser:
+class RedisSerializationProtocol:
     """RESPプロトコルのパーサー"""
 
     async def parse_command(self, reader: StreamReader) -> list[str]:
@@ -486,7 +486,7 @@ class Array:
     """Array型を表すラッパー (*)"""
     items: list | None  # Noneの場合はNull Array
 
-class RESPParser:
+class RedisSerializationProtocol:
     def encode_response(self, result) -> bytes:
         """応答を適切な形式でエンコードする"""
         if isinstance(result, SimpleString):
@@ -588,7 +588,7 @@ return RedisError("ERR unknown command")
 pytest tests/step02_protocol/ -v
 
 # 特定のテストクラスのみ
-pytest tests/step02_protocol/test_resp_protocol.py::TestStep02RESPParser -v
+pytest tests/step02_protocol/test_resp_protocol.py::TestStep02RedisSerializationProtocol -v
 pytest tests/step02_protocol/test_resp_protocol.py::TestStep02RESPEncoder -v
 ```
 

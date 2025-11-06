@@ -10,7 +10,7 @@ import sys
 
 from .commands import CommandHandler
 from .expiry import ExpiryManager
-from .protocol import RESPParser
+from .protocol import RedisSerializationProtocol
 from .server import ClientHandler, TCPServer
 from .storage import DataStore
 
@@ -40,8 +40,8 @@ async def main() -> None:
     store = DataStore()
     expiry_manager = ExpiryManager(store)
     command_handler = CommandHandler(store, expiry_manager)
-    parser = RESPParser()
-    client_handler = ClientHandler(parser, command_handler)
+    protocol = RedisSerializationProtocol()
+    client_handler = ClientHandler(protocol, command_handler)
 
     # 初期化したコンポーネントをTCPServerに注入
     server = TCPServer(

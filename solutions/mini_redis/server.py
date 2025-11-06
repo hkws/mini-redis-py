@@ -18,7 +18,7 @@ import logging
 from asyncio import StreamReader, StreamWriter
 
 from solutions.mini_redis.commands import CommandHandler, CommandError
-from solutions.mini_redis.protocol import RESPParser, RESPProtocolError, RedisError
+from solutions.mini_redis.protocol import RedisSerializationProtocol, RESPProtocolError, RedisError
 from solutions.mini_redis.expiry import ExpiryManager
 from solutions.mini_redis.storage import DataStore
 
@@ -83,9 +83,9 @@ class TCPServer:
             client_handler = self._client_handler
         else:
             # デフォルトの ClientHandler を作成
-            parser = RESPParser()
+            protocol = RedisSerializationProtocol()
             handler = CommandHandler(store, expiry)
-            client_handler = ClientHandler(parser, handler)
+            client_handler = ClientHandler(protocol, handler)
 
         # 1. asyncio.start_server()でサーバを起動
         self._server = await asyncio.start_server(
@@ -127,14 +127,14 @@ class ClientHandler:
     """クライアント接続のハンドラ.
     """
 
-    def __init__(self, parser: RESPParser, handler: CommandHandler) -> None:
+    def __init__(self, protocol: RedisSerializationProtocol, handler: CommandHandler) -> None:
         """ハンドラを初期化.
 
         Args:
-            parser: RESPパーサのインスタンス
+            protocol: RESPパーサのインスタンス
             handler: コマンドハンドラのインスタンス
         """
-        self._parser = parser
+        self._protocol = protocol
         self._handler = handler
 
     async def handle(self, reader: StreamReader, writer: StreamWriter) -> None:
@@ -157,17 +157,17 @@ class ClientHandler:
             while True:
                 try:                
                     # コマンドをパース
-                    command = await self._parser.parse_command(reader)
+                    command = await self._protocol.parse_command(reader)
 
                     # コマンドを実行（型ラッパーが返ってくる）
                     result = await self._handler.execute(command)
 
                     # 応答をエンコード（型ラッパーに基づいて適切な形式に変換）
-                    response = self._parser.encode_response(result)
+                    response = self._protocol.encode_response(result)
 
                 except CommandError as e:
                     # コマンド実行エラー（RedisErrorでラップしてエンコード）
-                    response = self._parser.encode_response(RedisError(str(e)))
+                    response = self._protocol.encode_response(RedisError(str(e)))
 
                 except asyncio.IncompleteReadError:
                     # クライアントが接続を切断した
@@ -182,7 +182,7 @@ class ClientHandler:
                 except Exception as e:
                     # 予期しないエラー
                     logger.exception("Unexpected error")
-                    response = self._parser.encode_response(RedisError("ERR internal server error"))
+                    response = self._protocol.encode_response(RedisError("ERR internal server error"))
 
                 # 応答を送信
                 writer.write(response)

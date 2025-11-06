@@ -19,7 +19,7 @@ from asyncio import StreamReader, StreamWriter
 from typing import TYPE_CHECKING
 
 from mini_redis.commands import CommandHandler, CommandError
-from mini_redis.protocol import RESPParser, RESPProtocolError
+from mini_redis.protocol import RedisSerializationProtocol, RESPProtocolError
 
 if TYPE_CHECKING:
     from mini_redis.expiry import ExpiryManager
@@ -86,9 +86,9 @@ class TCPServer:
             client_handler = self._client_handler
         else:
             # デフォルトの ClientHandler を作成
-            parser = RESPParser()
+            protocol = RedisSerializationProtocol()
             handler = CommandHandler(store, expiry)
-            client_handler = ClientHandler(parser, handler)
+            client_handler = ClientHandler(protocol, handler)
 
         # 1. asyncio.start_server()でサーバを起動
         self._server = await asyncio.start_server(
@@ -130,14 +130,14 @@ class ClientHandler:
     """クライアント接続のハンドラ.
     """
 
-    def __init__(self, parser: RESPParser, handler: CommandHandler) -> None:
+    def __init__(self, protocol: RedisSerializationProtocol, handler: CommandHandler) -> None:
         """ハンドラを初期化.
 
         Args:
-            parser: RESPパーサのインスタンス
+            protocol: RESPパーサのインスタンス
             handler: コマンドハンドラのインスタンス
         """
-        self._parser = parser
+        self._protocol = protocol
         self._handler = handler
 
     async def handle(self, reader: StreamReader, writer: StreamWriter) -> None:

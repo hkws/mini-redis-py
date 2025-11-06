@@ -10,7 +10,7 @@ import sys
 
 from mini_redis.commands import CommandHandler
 from mini_redis.expiry import ExpiryManager
-from mini_redis.protocol import RESPParser
+from mini_redis.protocol import RedisSerializationProtocol
 from mini_redis.server import ClientHandler, TCPServer
 from mini_redis.storage import DataStore
 
@@ -34,8 +34,8 @@ async def main() -> None:
     store = DataStore()
     expiry_manager = ExpiryManager(store)
     command_handler = CommandHandler(store, expiry_manager)
-    parser = RESPParser()
-    client_handler = ClientHandler(parser, command_handler)
+    protocol = RedisSerializationProtocol()
+    client_handler = ClientHandler(protocol, command_handler)
 
     # 初期化したコンポーネントをTCPServerに注入
     server = TCPServer(

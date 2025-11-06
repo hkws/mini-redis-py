@@ -35,7 +35,7 @@ class Array:
     """Array型を表すラッパー (*)"""
     items: list | None  # Noneの場合はNull Array
 
-class RESPParser:
+class RedisSerializationProtocol:
     """RESPプロトコルのパーサ・エンコーダ.
 
     責務:
@@ -137,7 +137,7 @@ class RESPParser:
 
         raise NotImplementedError("encode_bulk_string()を実装してください")
 
-    def encode_array(self, values: list[str] | None) -> bytes:
+    def encode_array(self, values) -> bytes:
         """Arrayをエンコード.
 
         Args:
@@ -152,7 +152,7 @@ class RESPParser:
         """
         raise NotImplementedError("encode_array()を実装してください")
 
-    def encode_response(self, response: str | int | list[str] | None) -> bytes:
+    def encode_response(self, response) -> bytes:
         """レスポンスをRESP形式にエンコード.
 
         Args:
