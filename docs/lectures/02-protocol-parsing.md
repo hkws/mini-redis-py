@@ -357,6 +357,33 @@ class RedisSerializationProtocol:
         return data[:-2].decode('utf-8')
 ```
 
+!!! info
+    本家Redis実装において、RESPデータ型のパース処理は [resp_parse.c](https://github.com/redis/redis/blob/8ad5421502241d6088b701bb4a4262124343345a/src/resp_parser.c)に記述されています。
+
+    例えば、Bulk Stringのparseは以下のような実装になっています。
+
+    ```c
+    static int parseBulk(ReplyParser *parser, void *p_ctx) {
+        const char *proto = parser->curr_location;
+        char *p = strchr(proto+1,'\r');
+        long long bulklen;
+        parser->curr_location = p + 2; /* for \r\n */
+        string2ll(proto+1,p-proto-1,&bulklen); // $の後の数値(bulklen)を\r\nまで読み取り、string2ll()でlong longに変換
+        if (bulklen == -1) {
+            // Null Bulk String ($-1\r\n)
+            parser->callbacks.null_bulk_string_callback(p_ctx, proto, parser->curr_location - proto);
+        } else {
+            // 指定された長さ分の文字列データを読み取り、bulk_string_callbackを呼び出す
+            const char *str = parser->curr_location;
+            parser->curr_location += bulklen;
+            parser->curr_location += 2; /* for \r\n */
+            parser->callbacks.bulk_string_callback(p_ctx, str, bulklen, proto, parser->curr_location - proto);
+        }
+
+        return C_OK;
+    }
+    ```
+
 ## RESPのエンコード実装
 
 ### エンコードのパターン
@@ -448,6 +475,15 @@ def encode_array(self, items: list | None) -> bytes:
 
     return result
 ```
+
+!!! info
+    本家Redis実装において、クライアントへのRESP形式での応答文の生成処理は以下に記述されています。
+    - [Simple String](https://github.com/redis/redis/blob/8ad5421502241d6088b701bb4a4262124343345a/src/module.c#L3162)
+        - よく使われる応答は[ここ](https://github.com/redis/redis/blob/8ad5421502241d6088b701bb4a4262124343345a/src/server.c#L2009)で事前に生成されています
+    - [Integer](https://github.com/redis/redis/blob/dc94d362952cf14a9a5c819f2793e4959ddc3a16/src/networking.c#L643)
+    - [Error](https://github.com/redis/redis/blob/dc94d362952cf14a9a5c819f2793e4959ddc3a16/src/networking.c#L643)
+    - [Array](https://github.com/redis/redis/blob/dc94d362952cf14a9a5c819f2793e4959ddc3a16/src/networking.c#L1053)
+    - [Bulk String](https://github.com/redis/redis/blob/dc94d362952cf14a9a5c819f2793e4959ddc3a16/src/networking.c#L1117)
 
 #### 5. Redisサーバーからのレスポンスのエンコード
 

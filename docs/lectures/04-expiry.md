@@ -313,6 +313,11 @@ def check_and_remove_expired(self, key: str) -> bool:
     return False
 ```
 
+!!! info
+    本家Redisにおいて、キーレベルの期限切れチェックは [checkAlreadyExpired](https://github.com/redis/redis/blob/8ad5421502241d6088b701bb4a4262124343345a/src/expire.c#L553)で行っています。
+    これは、[getexCommand](https://github.com/redis/redis/blob/a64e725034a5c91a7ed31cd47c1bc858d0db686e/src/t_string.c#L468)や[expireGenericCommand](https://github.com/redis/redis/blob/8ad5421502241d6088b701bb4a4262124343345a/src/expire.c#L626)で使われています。
+    また、GETコマンド実行時などのPassive Expiryの検証には[expireIfNeeded](https://github.com/redis/redis/blob/dc94d362952cf14a9a5c819f2793e4959ddc3a16/src/db.c#L2731)および[keyIsExpired](https://github.com/redis/redis/blob/dc94d362952cf14a9a5c819f2793e4959ddc3a16/src/db.c#L2731)が使われます。これは主に、キーを検索するときに実行する[lookupKey](https://github.com/redis/redis/blob/dc94d362952cf14a9a5c819f2793e4959ddc3a16/src/db.c#L237)内部で呼ばれます。
+
 ### 既存コマンドへのPassive Expiryの追加
 
 GET、INCR、EXPIRE、TTLの各コマンドに、キーにアクセスする前にPassive Expiryチェックを追加します。
@@ -612,6 +617,11 @@ async def _active_expiry_cycle(self) -> None:
 
         # 削除率が25%超なら再実行（即座に次のサンプリング）
 ```
+
+
+!!! info
+    本家Redis実装では、Active Expiryを[activeExpireCycle](https://github.com/redis/redis/blob/dc94d362952cf14a9a5c819f2793e4959ddc3a16/src/db.c#L237)に実装しています。
+    ここでは、`config_keys_per_loop` がループごとにチェックするキーの数を、 `config_cycle_acceptable_stale` が許容される期限切れキーの割合を表します。
 
 ### Serverでの起動
 

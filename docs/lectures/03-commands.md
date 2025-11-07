@@ -75,6 +75,13 @@ def delete(self, key: str) -> bool:
         return False
 ```
 
+!!! info
+    本家Redisにおいて、データストレージへの値の取得や保存は、[db.c](https://github.com/redis/redis/blob/dc94d362952cf14a9a5c819f2793e4959ddc3a16/src/db.c)に実装されています。各種コマンド実装はここで実装された関数を呼びます。
+    - [lookupKeyWriteWithLink](https://github.com/redis/redis/blob/dc94d362952cf14a9a5c819f2793e4959ddc3a16/src/db.c#L335): 値の取得
+    - [setKeybyLink](https://github.com/redis/redis/blob/dc94d362952cf14a9a5c819f2793e4959ddc3a16/src/db.c#L657): 値の保存
+    
+    これら関数では、内部で[kvstore.c](https://github.com/redis/redis/blob/8ad5421502241d6088b701bb4a4262124343345a/src/kvstore.c)内の実装を利用しています。db.cはRedis固有の機能（TTL管理等）を実装し、kvstore.cは汎用的なキーバリューストア管理を行っているのです。
+    
 
 ## コマンド実行（`commands.py`）
 
@@ -349,6 +356,13 @@ OK
 ```
 
 [ドキュメント](https://redis.io/docs/latest/commands/incr/)
+
+!!! info 
+    本家Redisにおいて、SETやGETといったコマンドの実行ロジックは、t_string.cに実装されています。
+    - GET: [getCommand](https://github.com/redis/redis/blob/dc94d362952cf14a9a5c819f2793e4959ddc3a16/src/t_string.c#L444)
+    - SET: [setCommand](https://github.com/redis/redis/blob/dc94d362952cf14a9a5c819f2793e4959ddc3a16/src/t_string.c#L404)
+    
+    内部では、db.cのlookupKeyやsetKeyが呼ばれます。
 
 ## エラーハンドリング
 
