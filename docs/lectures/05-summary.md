@@ -137,11 +137,11 @@ OK
 
 おめでとうございます！Mini-Redisワークショップ完走です！
 
-## 発展課題
+## さらに実装を進めたい方へ
 
-Mini-Redisの基本機能は完成しましたが、さらに学びを深めるために、以下のような発展課題に取り組むと良いかもしれません。
+Mini-Redisの基本機能は完成しましたが、さらに実装を追加したいという方は、以下のようなテーマが取り組みやすいかもしれません。
 
-### レベル1: 基本コマンドの拡張
+### 基本コマンドの拡張
 
 #### DELコマンド
 
@@ -156,7 +156,7 @@ Mini-Redisの基本機能は完成しましたが、さらに学びを深める�
 - 各キーを削除し、成功した数をカウント
 - 存在しないキーはカウントしない
 
-ドキュメント: [https://redis.io/docs/latest/commands/del/](https://redis.io/docs/latest/commands/del/)
+ドキュメント: https://redis.io/docs/latest/commands/del/
 
 #### EXISTSコマンド
 
@@ -170,48 +170,50 @@ Mini-Redisの基本機能は完成しましたが、さらに学びを深める�
 - Passive Expiryチェックを忘れずに
 - 複数キーに対応
 
-ドキュメント: [https://redis.io/docs/latest/commands/exists/](https://redis.io/docs/latest/commands/exists/)
+ドキュメント: https://redis.io/docs/latest/commands/exists/
 
-### レベル2: より複雑なデータ構造に対応
+### より複雑なデータ構造に対応
 
 #### Listの実装
 
 コマンド: `LPUSH`, `RPUSH`, `LPOP`, `RPOP`, `LRANGE`
 
-データ構造:
+データ構造例:
 
 ```python
 _lists: dict[str, list[str]] = {}
 ```
 
-実装のヒント:
-- Pythonのリスト（`list`）をそのまま使用
-- `LRANGE`でスライスを返す
-
 ドキュメント:
 - LPUSH: https://redis.io/docs/latest/commands/lpush/
+- RPUSH: https://redis.io/docs/latest/commands/rpush/
+- LPOP: https://redis.io/docs/latest/commands/lpop/
+- RPOP: https://redis.io/docs/latest/commands/rpop/
+- LRANGE: https://redis.io/docs/latest/commands/lrange/
 
 #### Hashの実装
 
 コマンド: `HSET`, `HGET`, `HGETALL`, `HDEL`
 
-データ構造:
+データ構造例:
 
 ```python
 _hashes: dict[str, dict[str, str]] = {}
 ```
 
-実装のヒント:
-- ネストした辞書構造
-- `HGETALL`でフィールドと値のペアを返す
+ドキュメント:
+- HSET: https://redis.io/docs/latest/commands/hset/
+- HGET: https://redis.io/docs/latest/commands/hget/
+- HGETALL: https://redis.io/docs/latest/commands/hgetall/
+- HDEL: https://redis.io/docs/latest/commands/hdel/
 
-### レベル3: データ永続化
+### データ永続化
 
 #### RDB（Redis Database）形式
 
 目的: スナップショット形式でデータを保存
 
-ヒント:
+アイデア:
 - [SAVEコマンド](https://redis.io/docs/latest/commands/save/)を実装
 - 定期的にバックグラウンドでスナップショットを保存
 - 起動時にRDBファイルを読み込み
@@ -223,7 +225,7 @@ _hashes: dict[str, dict[str, str]] = {}
 
 目的: コマンドログ形式でデータを保存
 
-ヒント:
+アイデア:
 - 書き込みコマンド（SET, DEL等）をファイルに追記
 - 起動時にコマンドを再実行してデータを復元
 - RESPフォーマットでコマンドを保存
