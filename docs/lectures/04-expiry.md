@@ -4,8 +4,6 @@
 
 このセクションでは、有効期限管理の必要性とユースケース、Passive Expiryの動作原理と実装、Active Expiryの動作原理とアルゴリズム、EXPIRE/TTLコマンドの実装、asyncioでのバックグラウンドタスクの実装について学びます。
 
-所要時間: 約30分（理論10分＋実装20分）
-
 ## 前提知識
 
 [Unix time](https://en.wikipedia.org/wiki/Unix_time)の概念、asyncioタスク管理（`create_task()`, `cancel()`）、そしてStorageレイヤーの操作（get/set/delete）を理解していることを前提としています。
@@ -14,19 +12,19 @@
 
 ### なぜ有効期限が必要か
 
-インメモリデータベースでは、不要になったデータを自動削除しないと、メモリが枯渇します。
+インメモリデータベースでは、不要になったデータを自動削除しないと、メモリが枯渇してしまいます。
 
-問題のシナリオ:
+例えば、以下のように1時間に10,000個のセッションキーが作成されたとしましょう。
 
 ```python
 # 1時間に10,000個のセッションキーを作成
 for i in range(10000):
     redis.set(f"session:{i}", f"data_{i}")
-
-# 時間が経つと、多くのセッションは無効（ユーザーがログアウト済み）になるが、メモリには残り続ける
 ```
 
-### 主なユースケース
+時間が経つと、多くのセッションは無効（ユーザーがログアウト済み）になリますが、メモリには残り続けてしまいます。有効期限を設定し、不要なデータが適切に消去されるようにする必要があります。
+
+### ユースケース
 
 | ユースケース | 有効期限 | 理由 |
 |------------|---------|------|
@@ -746,9 +744,9 @@ async def stop(self) -> None:
 
 ## 実装ガイド（ハンズオン）
 
-ここまで学んだ内容を活かして、有効期限管理（Passive + Active Expiry）とEXPIRE/TTLコマンドを実装しましょう！（目安時間: 35分）
+ここまで学んだ内容を活かして、有効期限管理（Passive + Active Expiry）とEXPIRE/TTLコマンドを実装しましょう！
 
-### パート0: ストレージ層への有効期限メソッド追加（5分）
+### パート0: ストレージ層への有効期限メソッド追加
 
 前のセクションでは基本的なストレージ操作（`get()`, `set()`, `delete()`）を実装しました。このセクションでは、有効期限管理のために必要なメソッドを追加します。
 
@@ -759,6 +757,7 @@ async def stop(self) -> None:
    - `set_expiry(key: str, expiry_at: int)`: キーの有効期限（Unixタイムスタンプ）を設定
    - `get_expiry(key: str) -> int | None`: キーの有効期限を取得
    - `get_all_keys() -> list[str]`: キー一覧を取得
+   - [参考: 有効期限の設定と取得](./04-expiry.md#有効期限の設定と取得)
 
 #### 実装のポイント
 
@@ -779,7 +778,7 @@ def get_all_keys(self) -> list[str]:
     return list(self._data.keys())
 ```
 
-### パート1: ExpiryManagerの実装（15分）
+### パート1: ExpiryManagerの実装
 
 #### 実装する内容
 
@@ -787,6 +786,7 @@ def get_all_keys(self) -> list[str]:
 2. `check_and_remove_expired()` を実装（Passive Expiry）
    - 有効期限をチェック
    - 期限切れの場合はキーを削除
+   - [参考: ExpiryManagerへのcheck_and_remove_expiredの追加](./04-expiry.md#expirymanagerへのcheck_and_remove_expiredの追加)
 3. `set_expiry()` と `get_ttl()` を実装
    - 有効期限を設定
    - 残り有効期限（TTL）を取得
@@ -797,24 +797,9 @@ def get_all_keys(self) -> list[str]:
    - ランダムに20キーをサンプリング
    - 期限切れキーを削除
    - 削除率が25%を超える場合は即座に再実行
+   - [参考: ExpiryManagerへのActive Expiry機能の追加](./04-expiry.md#expirymanagerへのactive-expiry機能の追加)
 
-#### 実装のポイント
-
-```python
-# set_expiry: 秒数 → Unixタイムスタンプ
-def set_expiry(self, key: str, seconds: int) -> None:
-    expiry_time = int(time.time()) + seconds
-    self._store.set_expiry(key, expiry_time)
-
-# get_ttl: Unixタイムスタンプ → 残り秒数
-def get_ttl(self, key: str) -> int | None:
-    expiry_time = self._store.get_expiry(key)
-    if expiry_time is None:
-        return None
-    return max(0, expiry_time - int(time.time()))
-```
-
-### パート2: EXPIRE/TTLコマンドの実装（10分）
+### パート2: EXPIRE/TTLコマンドの実装
 
 #### 実装する内容
 
@@ -822,19 +807,24 @@ def get_ttl(self, key: str) -> int | None:
 2. `CommandHandler.__init__()` に `ExpiryManager` を追加
 3. EXPIRE/TTLコマンドのルーティングを追加
 4. `execute_expire()` と `execute_ttl()` を実装
+[参考: CommandHandlerへの統合](./04-expiry.md#commandhandlerへの統合)
 
-### パート3: Passive Expiryのコマンドへの組み込み（5分）
+### パート3: Passive Expiryのコマンドへの組み込み
 
 #### 実装する内容
 1. `mini_redis/commands.py` を開く
 2. 既存の `execute_get()`, `execute_incr()`, `execute_expire()`, `execute_ttl()` にPassive Expiryのチェックを追加
 
-### パート4: Active Expiryのサーバ起動への組み込み（5分）
+[参考: 既存コマンドへのPassive Expiryの追加](./04-expiry.md#既存コマンドへのpassive-expiryの追加)
+
+### パート4: Active Expiryのサーバ起動への組み込み
 
 #### 実装する内容
 1. `mini_redis/server.py` を開く
 2. `TCPServer.start()` メソッド内でActive Expiryタスクを起動
 3. `TCPServer.stop()` メソッド内でActive Expiryタスクを停止
+
+[参考: Serverでの起動](./04-expiry.md#serverでの起動)
 
 ### テストで確認
 

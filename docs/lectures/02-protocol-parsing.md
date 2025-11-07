@@ -4,7 +4,6 @@
 
 このセクションでは、RESPの全データ型の詳細仕様、RESPメッセージをパースするアルゴリズム、Pythonでのエンコード実装パターン、よくある落とし穴とその回避方法、そしてバイナリセーフな通信の実現方法について学びます。
 
-所要時間: 約15分（理論5分＋実装10分）
 
 ## 前提知識
 
@@ -558,6 +557,7 @@ return RedisError("ERR unknown command")
 2. `parse_command()` メソッドを実装
    - 【未実装】`reader.readuntil(b'\r\n')` で1行ずつ読み取る
    - 【未実装】Arrays形式 (`*N\r\n`) をパース
+      - [参考: RESPのパース実装](./02-protocol-parsing.md#respのパース実装)
    - Bulk Strings形式 (`$length\r\ndata\r\n`) をパース
 3. エンコード関数を実装
    - 型ラッパーを定義
@@ -565,7 +565,9 @@ return RedisError("ERR unknown command")
    - `encode_integer()`: `:42\r\n`
    - `encode_error()`: `-ERR message\r\n`
    - 【未実装】`encode_bulk_string()`: `$3\r\nfoo\r\n` または `$-1\r\n`
+      - [参考: BulkStringのエンコード](./02-protocol-parsing.md#4-bulk-stringのエンコード)
    - 【未実装】`encode_array()`: `*N\r\n{要素1}{要素2}...`
+      - [参考: Arrayのエンコード](./02-protocol-parsing.md#5-arrayのエンコード)
    - `encode_response()`: 型ラッパーに基づいて適切なエンコード関数を呼び出す
 
 ### 実装のポイント

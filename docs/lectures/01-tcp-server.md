@@ -8,7 +8,7 @@
 
 ## 前提知識
 
-Pythonの基本文法、関数と例外処理の理解、そして同期処理の概念（通常のPythonコード）を理解していることを前提としています。
+Pythonの基本文法を理解していることを前提としています。
 
 ## asyncioの基礎
 
@@ -378,7 +378,7 @@ DEBUG:asyncio:Close <_UnixSelectorEventLoop running=False closed=False debug=Tru
 
 ## 実装ガイド（ハンズオン）
 
-ここまで学んだ内容を活かして、シンプルなエコーサーバーを実装していきましょう！（目安時間: 10分）
+ここまで学んだ内容を活かして、シンプルなエコーサーバーを実装していきましょう！
 
 ### 実装のゴール
 
@@ -390,13 +390,16 @@ DEBUG:asyncio:Close <_UnixSelectorEventLoop running=False closed=False debug=Tru
 2. `ClientHandler.handle()` メソッドの未実装箇所を実装
    - クライアント情報の取得とログ出力
    - 【未実装】データの読み取り（`readuntil(b'\r\n')`でRESP形式の行を読む）
+      - [参考: StreamReaderでデータを読む](./01-tcp-server.md#streamreaderでデータを読む)
    - 【未実装】受信したデータをそのままエコーバック（`writer.write(data)`, `await writer.drain()`で送信）
+      - [参考: StreamWriterでデータを送る](./01-tcp-server.md#streamwriterでデータを送る)
    - エラーハンドリング（`IncompleteReadError`、`CancelledError`等）
    - `finally`句でクリーンアップ
 3. `TCPServer.start()` メソッドの未実装箇所を実装
    - `asyncio.start_server()`でサーバを起動し、接続ハンドラとして `client_handler.handle` を指定
+      - [参考: asyncioによるTCPサーバの構築](./01-tcp-server.md#asyncioによるtcpサーバの構築)
 
-なお、`TCPServer.stop()`や、`TCPServer.start()`, `ClientHandler.handle()`の一部は実装済みです。
+`TCPServer.stop()`や、`TCPServer.start()`, `ClientHandler.handle()`の一部は実装済みです。
 
 ### 参考：ClientHandler.handle()の実装例
 

@@ -33,7 +33,7 @@ Redis（REmote DIctionary Server）は、source-availableなインメモリデ�
 
 ### Redisの特徴
 
-Redisはインメモリストレージとして、データをメモリ上に保存することで高速なアクセスを実現しています。StringやList、Hash、Set、Sorted Setなど豊富なデータ構造をサポートしており、用途に応じて最適なデータ型を選択できます。キーに有効期限を設定することで、不要になったデータを自動的に削除する機能も備えています。その他、RDBやAOFによるデータの永続化やPub/Subによるメッセージングなど、さまざまな機能を有しています。
+Redisはインメモリストレージとして、データをメモリ上に保存することで高速なアクセスを実現しています。StringやList、Hash、Set、Sorted Setなど豊富なデータ構造をサポートしており、用途に応じて最適なデータ型を選択できます。キーに有効期限を設定することで、不要になったデータを自動的に削除することもできます。その他、RDBやAOFによるデータの永続化やPub/Subによるメッセージングなど、さまざまな機能を有しています。
 
 ![](https://pbs.twimg.com/media/F9qhiJQbQAAaGtK?format=jpg&name=4096x4096)
 <div style="text-align: right; font-size: 12px">
@@ -58,8 +58,8 @@ Redisは、データベースクエリ結果のキャッシュや、ユーザー
 |------|------|
 | RESPプロトコル | Redisの通信フォーマットのパース・エンコード |
 | TCPサーバ | asyncioを使った並行処理可能なサーバ |
-| 基本コマンド | PING, GET, SET, INCR, EXPIRE, TTL |
-| （発展）有効期限管理 | Passive ExpiryとActive Expiryの2段階管理 |
+| 基本コマンド | PING, GET, SET, INCR |
+| （発展）有効期限管理 | EXPIRE, TTL, Passive ExpiryとActive Expiryの2段階管理 |
 
 ## RESPプロトコルの基礎
 

@@ -4,8 +4,6 @@
 
 このセクションでは、コマンド実行部の役割と設計、4つの基本コマンドの仕様と実装（PING, GET, SET, INCR）、エラーハンドリングのパターンとエラーメッセージの形式について学びます。
 
-所要時間: 約20分（理論5分＋実装15分）
-
 ## 前提知識
 
 RESPプロトコルのエンコード方法、そしてPythonの例外処理を理解していることを前提としています。
@@ -438,6 +436,7 @@ async def handle(self, reader: StreamReader, writer: StreamWriter) -> None:
    - 【未実装】`get()`: キーの値を取得
    - 【未実装】`set()`: キーに値を設定
    - 【未実装】`delete()`: キーを削除
+   - [参考: DataStore全体の骨格](./03-commands.md#datastore全体の骨格)
 
 #### テストで確認
 
@@ -457,6 +456,7 @@ pytest tests/step03_commands/test_storage.py -v
    - 【未実装】`execute_get()`: キーの値を取得
    - 【未実装】`execute_set()`: キーに値を設定
    - `execute_incr()`: 値を1増加
+   - [参考: 各コマンドの仕様と実装](./03-commands.md#各コマンドの仕様と実装)
 
 #### テストで確認
 
@@ -488,6 +488,7 @@ pytest tests/step03_commands/test_commands.py::TestStep03IncrCommand -v
    - コマンドを実行： `await self._handler.execute(command)`
    - 応答をエンコードして送信： `self._protocol.encode_response(result)`
    - `CommandError` をキャッチして適切なエラーメッセージを応答として送信
+   - [参考: クライアントハンドラとの統合とエラーハンドリングの実装例](./03-commands.md#クライアントハンドラとの統合とエラーハンドリングの実装例)
 
 ## 動作確認の手順
 
