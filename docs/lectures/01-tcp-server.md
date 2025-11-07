@@ -176,6 +176,10 @@ asyncio.run(main())
 2. 指定されたアドレス・ポートでリッスンするTCPサーバーを立ち上げ（[source](https://github.com/python/cpython/blob/6416e6ebe5b88087ada6f4a56972053edb9c2e01/Lib/asyncio/base_events.py#L1516)）
 
 
+!!! info
+    本家のRedis実装では、[server.c](https://github.com/redis/redis/blob/8ad5421502241d6088b701bb4a4262124343345a/src/server.c#L7321)に起動処理が記述されています。
+    main関数内で呼ばれた [initListeners関数](https://github.com/redis/redis/blob/8ad5421502241d6088b701bb4a4262124343345a/src/server.c#L2983)で、ソケットのlistener設定の初期化を行います。そして、[connListen関数](https://github.com/redis/redis/blob/8ad5421502241d6088b701bb4a4262124343345a/src/connection.h#L437)経由で[listenToPort関数](https://github.com/redis/redis/blob/8ad5421502241d6088b701bb4a4262124343345a/src/server.c#L2648)が実行され、各バインドアドレスに対してソケット作成とバインドを行います。
+
 ## StreamReader/StreamWriterによるデータ送受信
 
 ### StreamReaderでデータを読む
@@ -232,6 +236,11 @@ except asyncio.LimitOverrunError:
 | `await drain()` | ストリームへの書き込み再開に適切な状態になるまで待つ |
 | `close()` | 接続を閉じる |
 | `await wait_closed()` | 接続が完全に閉じるのを待つ |
+
+!!! info
+    「ソケット」とは、プロセス間通信（IPC）の一つであるソケット通信において、通信を行うためのインターフェース、接続口などと説明されます。（ファイルやパイプもプロセス間通信の方法として数えられますね）
+    プラットフォーム/ネットワークをまたぐインターフェースとしては、ソケットが事実上の標準と言って良いでしょう。
+    Pythonを使ったソケットプログラミングに触れてみたい方は、[こちら](https://docs.python.org/ja/3/howto/sockets.html)をご参照ください。
 
 **使用例**:
 
