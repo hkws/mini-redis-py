@@ -139,7 +139,7 @@ OK
 
 ## 発展課題
 
-Mini-Redisの基本機能は完成しましたが、さらに学びを深めるための発展課題があります。
+Mini-Redisの基本機能は完成しましたが、さらに学びを深めるために、以下のような発展課題に取り組むと良いかもしれません。
 
 ### レベル1: 基本コマンドの拡張
 
@@ -156,20 +156,7 @@ Mini-Redisの基本機能は完成しましたが、さらに学びを深める�
 - 各キーを削除し、成功した数をカウント
 - 存在しないキーはカウントしない
 
-例:
-
-```python
-async def _del(self, args: list[str]) -> int:
-    if len(args) == 0:
-        raise CommandError("ERR wrong number of arguments for 'del' command")
-
-    count = 0
-    for key in args:
-        if self._storage.delete(key):
-            count += 1
-
-    return count
-```
+ドキュメント: [https://redis.io/docs/latest/commands/del/](https://redis.io/docs/latest/commands/del/)
 
 #### EXISTSコマンド
 
@@ -183,18 +170,9 @@ async def _del(self, args: list[str]) -> int:
 - Passive Expiryチェックを忘れずに
 - 複数キーに対応
 
-#### EXPIRETIMEコマンド（Redis 7.0+）
+ドキュメント: [https://redis.io/docs/latest/commands/exists/](https://redis.io/docs/latest/commands/exists/)
 
-目的: キーの有効期限（Unixタイムスタンプ）を取得
-
-構文: `EXPIRETIME key`
-
-応答:
-- Unixタイムスタンプ（Integer）
-- -1: 期限なし
-- -2: キー不在
-
-### レベル2: 複雑なデータ構造
+### レベル2: より複雑なデータ構造に対応
 
 #### Listの実装
 
@@ -209,6 +187,9 @@ _lists: dict[str, list[str]] = {}
 実装のヒント:
 - Pythonのリスト（`list`）をそのまま使用
 - `LRANGE`でスライスを返す
+
+ドキュメント:
+- LPUSH: https://redis.io/docs/latest/commands/lpush/
 
 #### Hashの実装
 
@@ -230,70 +211,24 @@ _hashes: dict[str, dict[str, str]] = {}
 
 目的: スナップショット形式でデータを保存
 
-実装のヒント:
-- `pickle`モジュールを使用
+ヒント:
+- [SAVEコマンド](https://redis.io/docs/latest/commands/save/)を実装
 - 定期的にバックグラウンドでスナップショットを保存
 - 起動時にRDBファイルを読み込み
 
-例:
+ドキュメント：https://redis.io/docs/latest/operate/oss_and_stack/management/persistence/#snapshotting
 
-```python
-import pickle
-
-def save_rdb(self, filename: str) -> None:
-    """RDBファイルに保存"""
-    data = {
-        'keys': self._data,
-        'expiry': self._expiry
-    }
-    with open(filename, 'wb') as f:
-        pickle.dump(data, f)
-
-def load_rdb(self, filename: str) -> None:
-    """RDBファイルから読み込み"""
-    with open(filename, 'rb') as f:
-        data = pickle.load(f)
-        self._data = data['keys']
-        self._expiry = data['expiry']
-```
 
 #### AOF（Append-Only File）形式
 
 目的: コマンドログ形式でデータを保存
 
-実装のヒント:
+ヒント:
 - 書き込みコマンド（SET, DEL等）をファイルに追記
 - 起動時にコマンドを再実行してデータを復元
 - RESPフォーマットでコマンドを保存
 
-### レベル4: Pub/Sub機能
-
-#### 基本コマンド
-
-コマンド: `SUBSCRIBE`, `UNSUBSCRIBE`, `PUBLISH`
-
-実装のヒント:
-- チャンネルごとにサブスクライバーリストを管理
-- `SUBSCRIBE`したクライアントは専用モードに入る
-- `PUBLISH`でメッセージを全サブスクライバーに送信
-
-データ構造:
-
-```python
-_channels: dict[str, set[StreamWriter]] = {}
-```
-
-### レベル5: トランザクション
-
-#### 基本コマンド
-
-コマンド: `MULTI`, `EXEC`, `DISCARD`
-
-実装のヒント:
-- `MULTI`でトランザクション開始、コマンドをキューに蓄積
-- `EXEC`でキューのコマンドを一括実行
-- `DISCARD`でキューをクリア
-
+ドキュメント: https://redis.io/docs/latest/operate/oss_and_stack/management/persistence/#append-only-file
 
 ## 最後に
 
@@ -301,5 +236,5 @@ Mini-Redisワークショップを通じて、asyncioによる非同期プログ
 
 みなさん一度は聞いた/使ったことがあるであろうRedisというプロダクトの中心的な機能が、RESPという意外とシンプルな仕組みで動いていることを理解できたのではないでしょうか。
 
-このように、普段は当たり前に使っている機能の裏側がどうなっているのかを探ることは、非常に興味深く自身のスキルアップにも繋がります。ぜひみなさんのお気に入りの機能の裏側も深ぼってみてください。
+このように、普段は当たり前に使っている機能の裏側がどうなっているのかを探ることは、非常に面白く自身のスキルアップにも繋がることもあります。ぜひみなさんのお気に入りのプロダクトや機能の裏側も深掘りしてみてください。
 
