@@ -77,21 +77,3 @@ class TestStep03DataStoreBasics:
         """
         assert store.delete("nonexistent") is False
 
-    def test_exists_returns_true_for_existing_key(self, store: DataStore) -> None:
-        """キーの存在確認（存在する場合）を検証.
-
-        検証内容:
-        - key in dictの動作
-        - 存在する場合にTrue
-        """
-        store.set("foo", "bar")
-        assert store.exists("foo") is True
-
-    def test_exists_returns_false_for_nonexistent_key(self, store: DataStore) -> None:
-        """キーの存在確認（存在しない場合）を検証.
-
-        検証内容:
-        - key in dictの動作
-        - 存在しない場合にFalse
-        """
-        assert store.exists("nonexistent") is False

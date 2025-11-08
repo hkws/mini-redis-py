@@ -64,20 +64,46 @@ mini-redis-py/
 
 ## 事前準備
 
-- **uv のインストール**: 未導入の場合は `pipx install uv` などでセットアップし、`uv --version` で動作を確認してください。
-- **`.python-version` に従った仮想環境の作成**: 本リポジトリでは `3.12.11` を指定しています。`uv python install "$(cat .python-version)"` → `uv sync --extra dev` を実行すると、`.venv` が自動生成され依存関係が同期されます。
+本ワークショップは、受講者自身の端末で進めていただいても構いませんが、基本的にMacOSでの実施を前提としています。
+その他のOSを利用しているユーザーは、Github Codespacesでの実施を推奨します。
+
+### Github Codespacesの無料枠について
+
+個人用アカウントにおけるGithub Codespaces利用は、以下の使用量を超えなければ無料です（2025年11月現在）。
+
+- 1 か月あたりのストレージ: 15 GB/月
+- 1 か月あたりの1コアでのコンピューティング時間: 120 時間
+    - デフォルトで2コアのマシンが割り当てられるため、Codespacesで立ち上げる環境が本ワークショップの分のみである場合、一ヶ月あたり 60時間/月 利用できます。
+
+本ワークショップの内容のみであれば、上記無料枠を超えることはほとんど考えづらいです。しかし、意図しない課金が発生しないよう、後述するGithubの課金設定を確認しておくことをお勧めします。また、利用を終了したら忘れずに環境を削除しておきましょう。
+
+参考：[個人用アカウントによる無料使用と有料使用](https://docs.github.com/ja/billing/concepts/product-billing/github-codespaces#free-and-billed-use-by-personal-accounts)
+
+### Github Codespacesでの環境作成と終了
+
+1. (Optional) 想定以上に課金が発生することがないよう、Githubの設定をしておきましょう
+    - 現在の課金状況: https://github.com/settings/billing
+    - 予算やアラートの設定: https://github.com/settings/billing/budgets
+        - デフォルトで無料枠を超過したら利用できなくなる設定のはずですが、念の為確認した方が良いでしょう
+        - 参考: https://docs.github.com/ja/enterprise-cloud@latest/billing/tutorials/set-up-budgets
+
+1. ブラウザで以下のリンクをクリックしてください
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/hkws/mini-redis-py)
+
+1. ワークショップを終了した場合など、不要になったら `Stop Codespaces` や `Delete` しておきましょう。
+![alt text](./docs/images/stop_env.png)
 
 ## クイックスタート
 
 ### 1. セットアップ
 
 ```bash
-# リポジトリをクローン（任意のディレクトリで）
+# リポジトリをクローン（Codespacesを利用する場合は不要）
 git clone https://github.com/hkws/mini-redis-py.git
 cd mini-redis-py
 
-# まだ uv を導入していない場合は pipx などでインストール
-pipx install uv
+# まだ uv を導入していない場合は pip などでインストール
+pip install uv
 
 # プロジェクト用の Python 3.12.11 を取得し、依存関係を同期 (.venv が自動生成されます)
 uv self update  # 必要に応じて

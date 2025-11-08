@@ -450,6 +450,7 @@ pytest tests/step01_tcp_server/ -v
 ### 動作確認
 
 実際にサーバを動かして、ncコマンドで接続してみましょう。
+Github Codespacesを利用されている場合は、`sudo apt install netcat-openbsd` でインストールしてください。 
 
 ```bash
 # ターミナル1: サーバを起動

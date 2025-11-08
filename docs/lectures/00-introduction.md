@@ -162,9 +162,8 @@ sequenceDiagram
 実際の`redis-server`と`redis-cli`の通信をそのまま覗きたい場合は、`socat`でプロキシを挟むとRESPメッセージを生の形で確認できます。`redis` が未インストールなら `brew install redis`、`socat`が未インストールなら`brew install socat`などで導入してください。
 
 !!! note redis/redis-cli の準備
-    - macOS: `brew install redis`（`redis-cli` がインストールされます）
-    - Windows (Chocolatey): `choco install redis-64`
-    - Ubuntu: `sudo apt install -y redis-server redis-tools`
+    - macOS: `brew install redis socat`（`redis-cli` がインストールされます）
+    - Github Codespaces: `sudo apt update && sudo apt install -y redis-server redis-tools socat`
 
 ```bash
 # ターミナル1: redis-serverを起動（）

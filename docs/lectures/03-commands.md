@@ -64,7 +64,6 @@ def set(self, key: str, value: str) -> None:
 ### delete: 値を取り除く
 - 目的: 指定したキーを削除し、削除できたかどうかを返す  
 - 仕様: 削除できれば`True`、キーがなければ`False`  
-- 実装ポイント: `dict.pop()`を例外処理付きで使うと良い。
 
 ```python
 def delete(self, key: str) -> bool:
@@ -472,24 +471,15 @@ pytest tests/step03_commands/test_storage.py -v
    - `execute_incr()`: 値を1増加
    - [参考: 各コマンドの仕様と実装](./03-commands.md#各コマンドの仕様と実装)
 
-#### テストで確認
-
-```bash
-pytest tests/step03_commands/test_commands.py -v
-```
 
 #### テストで確認
 
 ```bash
-# コマンドテストを実行
-pytest tests/step03_commands/test_commands.py -v
-
 # すべてのテストを実行（ストレージ + コマンド）
 pytest tests/step03_commands/ -v
 
 # 特定のコマンドのみ
 pytest tests/step03_commands/test_commands.py::TestStep03PingCommand -v
-pytest tests/step03_commands/test_commands.py::TestStep03IncrCommand -v
 ```
 
 ### パート3: クライアントハンドラの実装
@@ -500,8 +490,9 @@ pytest tests/step03_commands/test_commands.py::TestStep03IncrCommand -v
 2. 【未実装】`handle()` メソッドを修正
    - コマンドをパース： `await self._protocol.parse_command(reader)`
    - コマンドを実行： `await self._handler.execute(command)`
-   - 応答をエンコードして送信： `self._protocol.encode_response(result)`
-   - `CommandError` をキャッチして適切なエラーメッセージを応答として送信
+   - 応答をエンコード： `self._protocol.encode_response(result)`
+   - `CommandError` をキャッチして適切なエラーメッセージを応答としてエンコード
+   - 応答を送信
    - [参考: クライアントハンドラとの統合とエラーハンドリングの実装例](./03-commands.md#クライアントハンドラとの統合とエラーハンドリングの実装例)
 
 ## 動作確認の手順
@@ -517,6 +508,8 @@ python -m mini_redis
 ```bash
 redis-cli -p 6379
 ```
+
+!!! 
 
 ### 3. 各コマンドをテスト
 

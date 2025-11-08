@@ -193,7 +193,7 @@ class TestStep04ActiveExpiry:
         """Active Expiryは空のストアでもエラーにならないことを検証.
 
         検証内容:
-        - get_keys_with_expiry()が空リスト
+        - get_all_key()が空リスト
         - 即座に終了
         - エラーは発生しない
         """
@@ -206,25 +206,4 @@ class TestStep04ActiveExpiry:
         # エラーが発生しないことを確認
         assert len(store.get_all_keys()) == 0
 
-    @pytest.mark.asyncio
-    async def test_active_expiry_ignores_keys_without_expiry(self) -> None:
-        """Active Expiryは有効期限のないキーを無視することを検証.
 
-        検証内容:
-        - get_keys_with_expiry()は有効期限付きキーのみ返す
-        - 有効期限のないキーはサンプリング対象外
-        - 削除されない
-        """
-        store = DataStore()
-        expiry = ExpiryManager(store)
-
-        # 有効期限のないキーを作成
-        store.set("key1", "value1")
-        store.set("key2", "value2")
-
-        # Active expiryサイクルを実行
-        await expiry._active_expiry_cycle()
-
-        # キーは削除されない
-        assert store.exists("key1") is True
-        assert store.exists("key2") is True

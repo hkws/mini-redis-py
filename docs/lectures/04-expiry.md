@@ -765,7 +765,13 @@ async def stop(self) -> None:
    - `set_expiry(key: str, expiry_at: int)`: キーの有効期限（Unixタイムスタンプ）を設定
    - `get_expiry(key: str) -> int | None`: キーの有効期限を取得
    - `get_all_keys() -> list[str]`: キー一覧を取得
+   - `exists() -> bool`: キーの存在確認
    - [参考: 有効期限の設定と取得](./04-expiry.md#有効期限の設定と取得)
+
+!!! note
+    get_all_keysは、Active Expiry処理においてランダムにキーをサンプリングするために使用します。
+    今回は簡単のためにすべてのキーを取得していますが、本家Redisではリザーバーサンプリングアルゴリズムを使用しており、すべてのキーの読み出しを回避しています。
+    本家Redisのランダムなキーサンプリング実装: [dict.c](https://github.com/redis/redis/blob/8ad5421502241d6088b701bb4a4262124343345a/src/dict.c#L1266)
 
 #### 実装のポイント
 
@@ -798,8 +804,10 @@ def get_all_keys(self) -> list[str]:
 3. `set_expiry()` と `get_ttl()` を実装
    - 有効期限を設定
    - 残り有効期限（TTL）を取得
+   - [参考: 有効期限の設定と取得](./04-expiry.md#有効期限の設定と取得)
 4. `start()` と `stop()` を実装（Active Expiry）
    - バックグラウンドタスクの起動・停止
+   - [参考: Active Expiryの起動停止メソッド](./04-expiry.md#active-expiryの起動停止メソッド)
 5. `_run_active_expiry()` と `_active_expiry_cycle()` を実装
    - 1秒ごとにバックグラウンドタスクを実行
    - ランダムに20キーをサンプリング

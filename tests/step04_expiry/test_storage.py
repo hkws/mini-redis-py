@@ -5,7 +5,7 @@
 テスト内容:
 - set_expiry(): 有効期限の設定
 - get_expiry(): 有効期限の取得
-- get_keys_with_expiry(): 有効期限付きキー一覧の取得
+- get_all_keys(): 有効期限付きキー一覧の取得
 
 講義資料: docs/lectures/04-expiry.md (パート0: ストレージ層への有効期限メソッド追加)
 実行方法: pytest tests/step04_expiry/test_storage.py -v
