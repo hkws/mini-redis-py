@@ -4,7 +4,6 @@
 
 このセクションでは、asyncioの基本概念（イベントループ、コルーチン、async/await）について学び、asyncioを使ったTCPサーバの構築方法を習得します。StreamReader/StreamWriterを使ったデータの送受信、接続管理とクリーンアップについても学びます。
 
-所要時間: 約15分（理論5分＋実装10分）
 
 ## 前提知識
 
@@ -47,26 +46,9 @@ results = await asyncio.gather(
 
 #### 1. イベントループ
 
-イベントループは、非同期処理を管理・実行する、asyncioにおいて中心的な役割を担う存在です。非同期に実行すべきジョブをキューに持っています。キューから順にジョブを取り出し、関数のように制御を渡し、そのジョブがI/O待ち等で一時停止したり完了したりすると、イベントループに制御が戻ります。
+イベントループは、非同期処理を管理・実行する、asyncioにおいて中心的な役割を担う存在です。非同期に実行すべきジョブをキューに持っています。キュー内の実行可能なジョブを取り出し、関数のように制御を渡します。そのジョブがI/O待ち等で一時停止したり完了したりすると、イベントループに制御が戻り、I/Oイベントを監視して完了を待ちます。I/Oが完了したタスクは再び実行可能になり、ジョブの再開がスケジュールされます。
+ループはstop()されるか、run_until_complete()に渡したFutureが完了するまで続きます。
 
-
-イベントループの動作:
-
-```mermaid
-graph TB
-    START[イベントループ起動] --> CHECK{実行可能なタスクはある?}
-    CHECK -->|はい| RUN[タスクを実行]
-    RUN --> AWAIT{awaitで待機中?}
-    AWAIT -->|はい| SWITCH[別のタスクに切り替え]
-    AWAIT -->|いいえ| CHECK
-    SWITCH --> CHECK
-    CHECK -->|いいえ| END[終了]
-
-    style START fill:#e1f5ff
-    style END fill:#ffe1e1
-    style RUN fill:#e1ffe1
-    style SWITCH fill:#fff4e1
-```
 
 #### 2. コルーチン
 
@@ -343,47 +325,46 @@ async def handle_client(reader: StreamReader, writer: StreamWriter) -> None:
         await writer.wait_closed()
 ```
 
-## デバッグのヒント
 
-### asyncioのデバッグモード有効化
+!!! note デバッグモード
 
-asnycioは、開発を容易にするためにデバッグモードが用意されています。デフォルトでは無効ですが、たとえば以下のようにすることで有効化できます。
+    asnycioは、開発を容易にするためにデバッグモードが用意されています。デフォルトでは無効ですが、たとえば以下のようにすることで有効化できます。
 
-```python
-import logging
-import asyncio
+    ```python
+    import logging
+    import asyncio
 
-logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.DEBUG)
 
-async def debug_me():
-    await asyncio.sleep(1)
+    async def debug_me():
+        await asyncio.sleep(1)
 
-asyncio.run(debug_me(), debug=True)
-```
+    asyncio.run(debug_me(), debug=True)
+    ```
 
-デバッグモードでは、I/Oの処理やタスクの実行時間が長すぎる場合、それがログに記録されます。
-たとえば、以下はあえて時間のかかる同期処理を入れた例です。
+    デバッグモードでは、I/Oの処理やタスクの実行時間が長すぎる場合、それがログに記録されます。
+    たとえば、以下はあえて時間のかかる同期処理を入れた例です。
 
-```python
-import logging
-import asyncio
-import time
+    ```python
+    import logging
+    import asyncio
+    import time
 
-logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.DEBUG)
 
-async def debug_me():
-    time.sleep(1)
+    async def debug_me():
+        time.sleep(1)
 
-asyncio.run(debug_me(), debug=True)
-```
+    asyncio.run(debug_me(), debug=True)
+    ```
 
-これを実行すると、以下のようなログが表示されます。
+    これを実行すると、以下のようなログが表示されます。
 
-```
-DEBUG:asyncio:Using selector: KqueueSelector
-WARNING:asyncio:Executing <Task finished name='Task-4' coro=<debug_me() done, defined at <stdin>:1> result=None created at /Users/h.kawase/.local/share/uv/python/cpython-3.12.11-macos-aarch64-none/lib/python3.12/asyncio/runners.py:100> took 1.006 seconds
-DEBUG:asyncio:Close <_UnixSelectorEventLoop running=False closed=False debug=True>
-```
+    ```
+    DEBUG:asyncio:Using selector: KqueueSelector
+    WARNING:asyncio:Executing <Task finished name='Task-4' coro=<debug_me() done, defined at <stdin>:1> result=None created at /Users/h.kawase/.local/share/uv/python/cpython-3.12.11-macos-aarch64-none/lib/python3.12/asyncio/runners.py:100> took 1.006 seconds
+    DEBUG:asyncio:Close <_UnixSelectorEventLoop running=False closed=False debug=True>
+    ```
 
 ## 実装ガイド（ハンズオン）
 

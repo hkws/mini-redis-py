@@ -17,18 +17,26 @@ Pythonで作る小さなRedis実装（学習用）
 
 各講義資料には、理論解説と実装ガイド（ハンズオン）の両方が含まれています。順番に読みながら実装を進めることで、ワークショップが完了します。
 
-- **[00-introduction.md](docs/lectures/00-introduction.md)** - Redis基礎とRESP入門、環境セットアップ（5分）
-- **[01-tcp-server.md](docs/lectures/01-tcp-server.md)** - asyncio TCPサーバの理論と実装（15分）
-- **[02-protocol-parsing.md](docs/lectures/02-protocol-parsing.md)** - RESPプロトコル詳細と実装（15分）
+- **[00-introduction.md](docs/lectures/00-introduction.md)** - Redis基礎とRESP入門、環境セットアップ（15分）
+- **[01-tcp-server.md](docs/lectures/01-tcp-server.md)** - asyncio TCPサーバの理論と実装（20分）
+- **[02-protocol-parsing.md](docs/lectures/02-protocol-parsing.md)** - RESPプロトコル詳細と実装（25分）
 - **[03-commands.md](docs/lectures/03-commands.md)** - コマンド実装パターンと実装（25分）
-- **[04-expiry.md](docs/lectures/04-expiry.md)** - 有効期限管理の理論と実装（25分）
+- **[04-expiry.md](docs/lectures/04-expiry.md)** - 有効期限管理の理論と実装（時間が余れば）
 - **[05-summary.md](docs/lectures/05-summary.md)** - 統合テスト、まとめ、発展課題（5分）
+- **[アーキテクチャ](docs/architecture.md)** - システム全体像、レイヤー構造、設計
 
-ワークショップはパートごとに、講師による説明->受講者によるハンズオン->ハンズオンパートの解説の順での進行を基本としますが、必ずしもこの進め方に合わせる必要はありません。資料を見ながら自由に進めていただいても構いません。
+ワークショップはパートごとに、講師による説明->受講者によるハンズオン->ハンズオンパートの解説の順での進行を基本としますが、必ずしもこの進め方に合わせる必要はありません。分量が多いため、人によっては進行が早いと感じる可能性がありますので、ご自身のペースで取り組んでください。
 
-### 補足資料
+時間の都合上、講師による説明はおそらく[03-commands.md](docs/lectures/03-commands.md)までになる見込みです。早くここまで終えられた方は、ぜひ[04-expiry.md](docs/lectures/04-expiry.md)にも取り組んでください。
 
-- **[アーキテクチャ解説](docs/architecture.md)** - システム全体像、レイヤー構造、設計
+- 入室退室途中休憩自由！
+- 進行を気にせずゆっくり進めるのもOK！
+- 進行を気にせずどんどん先に進んでもOK！
+- 完成版(./solutions/mini_redis)を参考に写経するのもOK！
+- 本家Redisのソースコードを読み込むのもOK！（資料の中にいくつか対応する本家実装へのリンクを付与しています）
+
+楽しくやっていきましょう！
+
 
 ## プロジェクト構成
 
@@ -72,7 +80,7 @@ cd mini-redis-py
 pipx install uv
 
 # プロジェクト用の Python 3.12.11 を取得し、依存関係を同期 (.venv が自動生成されます)
-uv self update
+uv self update  # 必要に応じて
 uv python install "$(cat .python-version)"
 uv sync --extra dev
 
@@ -99,18 +107,11 @@ cat docs/lectures/00-introduction.md
 # TODOコメントを実装
 # mini_redis/protocol.py, storage.py, commands.py, expiry.py, server.py
 
-# テストで確認
-pytest tests/test_protocol.py -v
-
 # サーバを起動
 python -m mini_redis
 ```
 
-## テストについて
-
 本プロジェクトでは、実装ステップごとにテストが整理されています。
-
-### ステップごとのテスト実行
 
 ```bash
 # Step 01: TCPサーバとasyncio
@@ -125,24 +126,6 @@ pytest tests/step03_commands/ -v
 # Step 04: 有効期限管理
 pytest tests/step04_expiry/ -v
 ```
-
-## 開発ツール
-
-```bash
-# すべてのテストを実行
-pytest
-
-# 型チェック
-mypy mini_redis
-
-# リンター・フォーマッター
-ruff check .
-ruff format .
-```
-
-## トラブルシューティング
-
-実装中に詰まった場合は、[テストコード](tests/)を参照して期待される動作を確認してください。また、[solutions/](solutions/)ディレクトリには完成版コードが含まれています。
 
 ## ライセンス
 

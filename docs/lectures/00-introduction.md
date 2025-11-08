@@ -235,7 +235,7 @@ pytest
 
 ### 完成イメージを確認
 
-実装を始める前に、完成版のMini-Redisを動かして、どんなものを作るのかイメージを掴みましょう。
+実装を始める前に、完成版のMini-Redisを動かして、どんなものを作るのかイメージを掴みましょう。完成版は solutions/mini_redis に配置してあります。[アーキテクチャドキュメント](../architecture.md)も参考にしてください。
 
 ```bash
 # ターミナル1: 完成版サーバを起動
@@ -297,9 +297,9 @@ OK
 
 以降のセクションでは、以下の内容を実装していきます。
 
-1. **TCPサーバの構築** ([01-tcp-server.md](01-tcp-server.md)): asyncioを使った非同期TCPサーバ
-2. **プロトコルのパース** ([02-protocol-parsing.md](02-protocol-parsing.md)): RESPメッセージの解析とエンコード
-3. **コマンドの実装** ([03-commands.md](03-commands.md)): PING, GET, SET, INCR
-4. **有効期限管理** ([04-expiry.md](04-expiry.md)): Passive/Active Expiryの実装
+1. TCPサーバの構築 ([01-tcp-server.md](01-tcp-server.md)): asyncioを使った非同期TCPサーバ
+2. プロトコルのパース ([02-protocol-parsing.md](02-protocol-parsing.md)): RESPメッセージの解析とエンコード
+3. コマンドの実装 ([03-commands.md](03-commands.md)): PING, GET, SET, INCR
+4. 有効期限管理 ([04-expiry.md](04-expiry.md)): Passive/Active Expiryの実装
 
 実装を始める前に、[アーキテクチャドキュメント](../architecture.md)で全体像を確認することをおすすめします。

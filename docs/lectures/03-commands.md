@@ -54,7 +54,7 @@ def get(self, key: str) -> str | None:
 ### set: 値を保存する
 - 目的: キーに値を設定し、既存の有効期限をリセットする  
 - 仕様: 常に新しい`StoreEntry`を作成して保存する  
-- 実装ポイント: `StoreEntry`の`expiry_at`はデフォルト`None`。再設定時には古いエントリを丸ごと置き換えることで期限をクリアする。
+- 実装ポイント: `StoreEntry`の`expiry_at`はデフォルト`None`とする。再設定時には古いエントリを丸ごと置き換えることで期限をクリアする。
 
 ```python
 def set(self, key: str, value: str) -> None:
@@ -64,7 +64,7 @@ def set(self, key: str, value: str) -> None:
 ### delete: 値を取り除く
 - 目的: 指定したキーを削除し、削除できたかどうかを返す  
 - 仕様: 削除できれば`True`、キーがなければ`False`  
-- 実装ポイント: `dict.pop()`を例外処理付きで使うと戻り値の制御がしやすい。
+- 実装ポイント: `dict.pop()`を例外処理付きで使うと良い。
 
 ```python
 def delete(self, key: str) -> bool:
@@ -207,7 +207,7 @@ PONG
 "Hello, Redis!"
 ```
 
-[ドキュメント](https://redis.io/docs/latest/commands/ping/)
+参考：[公式ドキュメント](https://redis.io/docs/latest/commands/ping/)
 
 
 ### 2. GETコマンド
@@ -248,7 +248,7 @@ OK
 (nil)
 ```
 
-[ドキュメント](https://redis.io/docs/latest/commands/get/)
+参考：[参考ドキュメント](https://redis.io/docs/latest/commands/get/)
 
 
 ### 3. SETコマンド
@@ -290,7 +290,7 @@ OK
 "Alice"
 ```
 
-[ドキュメント](https://redis.io/docs/latest/commands/set/)
+参考：[公式ドキュメント](https://redis.io/docs/latest/commands/set/)
 
 
 ### 4. INCRコマンド
@@ -355,7 +355,7 @@ OK
 (error) ERR value is not an integer or out of range
 ```
 
-[ドキュメント](https://redis.io/docs/latest/commands/incr/)
+参考：[公式ドキュメント](https://redis.io/docs/latest/commands/incr/)
 
 !!! info 
     本家Redisにおいて、SETやGETといったコマンドの実行ロジックは、t_string.cに実装されています。

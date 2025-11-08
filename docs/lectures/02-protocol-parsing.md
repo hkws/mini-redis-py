@@ -2,7 +2,7 @@
 
 ## 学習目標
 
-このセクションでは、RESPの全データ型の詳細仕様、RESPメッセージをパースするアルゴリズム、Pythonでのエンコード実装パターン、よくある落とし穴とその回避方法、そしてバイナリセーフな通信の実現方法について学びます。
+このセクションでは、RESPの全データ型の詳細仕様、RESPメッセージのパースおよびエンコードについて学びます。
 
 
 ## 前提知識
@@ -210,7 +210,7 @@ b'*0\r\n'  # → []
 b'*-1\r\n'  # → None
 ```
 
-!!! note パースとエンコードでの型の扱い
+!!! note パースとエンコードでのPython実装時の型の扱い
     **パース時**（クライアントからのメッセージの受信時）は、上記のようにPythonの基本型（`str`、`int`、`list`、`None`）で表現できます。
 
     **エンコード時**（クライアントへのメッセージ送信時）は、Simple StringとBulk String、ErrorとSimple Stringなどを区別する必要があります。これは、Pythonの基本型だけでは区別できないため、後述するように型ラッパークラスを使用します。
@@ -622,12 +622,7 @@ return RedisError("ERR unknown command")
 ### テストで確認
 
 ```bash
-# すべてのテストを実行
 pytest tests/step02_protocol/ -v
-
-# 特定のテストクラスのみ
-pytest tests/step02_protocol/test_resp_protocol.py::TestStep02RedisSerializationProtocol -v
-pytest tests/step02_protocol/test_resp_protocol.py::TestStep02RESPEncoder -v
 ```
 
 ## 次のステップ
