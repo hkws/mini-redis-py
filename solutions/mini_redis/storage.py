@@ -84,11 +84,3 @@ class DataStore:
         """全てのキー一覧を取得する"""
         return list(self._data.keys())
 
-    def get_keys_with_expiry(self) -> list[str]:
-        """有効期限が設定されたキーの一覧を取得.
-
-        Returns:
-            有効期限が設定されたキーのリスト
-
-        """
-        raise NotImplementedError("get_keys_with_expiry()を実装してください")
