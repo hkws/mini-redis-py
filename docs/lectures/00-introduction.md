@@ -4,8 +4,6 @@
 
 このセクションでは、Redisとキー・バリューストアの基本概念、Mini-Redisプロジェクトの目的と完成イメージ、RESPプロトコルの基本構造、そしてクライアント・サーバ間の通信フローについて学びます。
 
-所要時間: 約5分
-
 ## 前提知識
 
 Pythonの基本構文やコマンドラインの基本操作を理解していることを前提としています。とはいえ、複雑な構文や操作は必要なく、[チュートリアル](https://docs.python.org/3.12/tutorial/index.html)で扱われるような最低限の文法が理解できており、ファイルの移動や編集といった基本的なコマンドがわかっていれば問題ありません。
@@ -300,6 +298,6 @@ OK
 1. TCPサーバの構築 ([01-tcp-server.md](01-tcp-server.md)): asyncioを使った非同期TCPサーバ
 2. プロトコルのパース ([02-protocol-parsing.md](02-protocol-parsing.md)): RESPメッセージの解析とエンコード
 3. コマンドの実装 ([03-commands.md](03-commands.md)): PING, GET, SET, INCR
-4. 有効期限管理 ([04-expiry.md](04-expiry.md)): Passive/Active Expiryの実装
+4. 有効期限管理 ([04-expiry.md](04-expiry.md)): EXPIRE, TTL, Passive/Active Expiryの実装
 
 実装を始める前に、[アーキテクチャドキュメント](../architecture.md)で全体像を確認することをおすすめします。
