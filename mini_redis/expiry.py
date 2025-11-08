@@ -175,3 +175,6 @@ class ExpiryManager:
 
     def get_ttl(self, key: str) -> int | None:
         raise NotImplementedError("get_ttl()を実装してください")
+
+    def get_all_keys(self) -> list[str]:
+        raise NotImplementedError("get_all_keys()を実装してください")
